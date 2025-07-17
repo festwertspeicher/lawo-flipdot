@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="de">
+
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1">
+        <title>LED Matrix Control</title>
+        <script src="https://cdn.jsdelivr.net/npm/p5@2.0.3/lib/p5.min.js"></script>
+        <script src="/sketch.js"></script>
+        <style>
+            body {
+                margin: 0;
+                font-family: sans-serif;
+                background: #f0f0f0;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+            }
+
+            #sketch {
+                margin-top: 20px;
+            }
+
+            #controls {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 10px;
+                margin: 20px;
+                justify-content: center;
+            }
+
+            #controls button,
+            #controls input[type=checkbox]+label {
+                padding: 8px 12px;
+                font-size: 14px;
+                cursor: pointer;
+            }
+
+            /* Styles für Datei-Upload */
+            #uploadForm {
+                margin: 20px;
+            }
+
+            #uploadStatus {
+                margin-top: 10px;
+                color: green;
+            }
+
+            .send-button {
+                background-color: lightskyblue;
+            }
+        </style>
+    </head>
+
+    <body>
+        <div id="sketch"></div>
+        <div id="controls">
+            <div id="checkboxes" class="checkbox-row"></div>
+            <div id="buttons" class="button-row"></div>
+        </div>
+
+        <!-- Datei-Upload -->
+        <form id="uploadForm" enctype="multipart/form-data">
+            <input type="file" name="file" id="fileInput">
+            <button type="submit" id="uploadButton" disabled>Upload</button>
+        </form>
+        <div id="uploadStatus"></div>
+
+        <script>
+            document.addEventListener('DOMContentLoaded', () => {
+                const form = document.getElementById('uploadForm');
+                const fileInput = document.getElementById('fileInput');
+                const uploadButton = document.getElementById('uploadButton');
+                const statusDiv = document.getElementById('uploadStatus');
+
+                // Button nur aktiv, wenn Datei ausgewählt
+                fileInput.addEventListener('change', () => {
+                    uploadButton.disabled = fileInput.files.length === 0;
+                });
+
+                // Hier wird der Default-Submit wirklich verhindert
+                form.addEventListener('submit', e => {
+                    e.preventDefault();   // ganz wichtig!
+                    const data = new FormData(form);
+                    fetch('/upload', { method: 'POST', body: data })
+                        .then(r => r.text())
+                        .then(txt => {
+                            statusDiv.innerText = txt;
+                            // reset
+                            fileInput.value = '';
+                            uploadButton.disabled = true;
+                            // falls du trotzdem reload willst:
+                            setTimeout(() => location.reload(), 1000);
+                        })
+                        .catch(err => {
+                            statusDiv.innerText = 'Fehler: ' + err;
+                            uploadButton.disabled = true;
+                        });
+                });
+            });
+        </script>
+    </body>
+
+</html>
