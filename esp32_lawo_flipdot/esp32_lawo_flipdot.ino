@@ -24,6 +24,9 @@ bool stateInvert    = false;
 bool stateActive    = true;
 bool stateQuick     = true;
 
+long lastWifiCheck = 0;
+const long WIFI_CHECK_INTERVAL = 10000; 
+
 AsyncWebServer server(80);
 AsyncWebSocket  ws("/ws");
 HardwareSerial& matrixSerial = Serial1;
@@ -134,12 +137,26 @@ void setup(){
   );
 
   // WLAN
+
+  // Station-Mode sicherstellen (https://randomnerdtutorials.com/esp32-useful-wi-fi-functions-arduino/#1)
+  WiFi.mode(WIFI_STA); 
+
   WiFi.begin(ssid, password);
   Serial.print("Verbinde WLAN");
-  while(WiFi.status()!=WL_CONNECTED){
-    delay(500); Serial.print(".");
+  
+  // Max. 6 Versuche
+  int attempts = 0;
+  while(WiFi.status() != WL_CONNECTED && attempts < 6){
+    delay(500); 
+    Serial.print(".");
+    attempts++;
   }
-  Serial.println("\n✓ WLAN: " + WiFi.localIP().toString());
+
+  if(WiFi.status() == WL_CONNECTED) {
+    Serial.println("\n✓ WLAN: " + WiFi.localIP().toString());
+  } else {
+    Serial.println("\n! WLAN konnte nicht verbunden werden. Bitte für Verbindung sorgen und Device neustarten.");
+  }
 
   // initiale Zustände an Matrix senden
   uint8_t cmd1[] = { BYTESTART, BYTEACTIVE, BYTEON }; //matrix active
@@ -161,5 +178,15 @@ void setup(){
 }
 
 void loop(){
+
+  // WLAN Reconnect (https://randomnerdtutorials.com/esp32-useful-wi-fi-functions-arduino/#9)
+  if (millis() - lastWifiCheck >= WIFI_CHECK_INTERVAL) {
+    lastWifiCheck = millis();
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("! WLAN verloren. Versuche Reconnect...");
+      WiFi.reconnect();
+    }
+  }
+
   forwardMatrixResponses();
 }
