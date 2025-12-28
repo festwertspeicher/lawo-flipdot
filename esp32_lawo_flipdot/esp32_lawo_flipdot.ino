@@ -111,6 +111,23 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
   }
 }
 
+// SPIFFS Inhalt listen
+void checkSPIFFSFiles() {
+  Serial.println("Checking SPIFFS files:");
+  File root = SPIFFS.open("/");
+  File file = root.openNextFile();
+  int fileCount = 0;
+  while(file){
+    Serial.print("  FILE: ");
+    Serial.println(file.name());
+    fileCount++;
+    file = root.openNextFile();
+  }
+  if(fileCount == 0) {
+    Serial.println("ALERT: SPIFFS is empty! data folder is not filled with any files");
+  }
+}
+
 void setup(){
   Serial.begin(115200);
   matrixSerial.begin(57600, SERIAL_8N1, RX_PIN, TX_PIN);
@@ -120,19 +137,19 @@ void setup(){
     Serial.println("✗ SPIFFS mount failed");
     return;
   }
-
+  
+  // SPIFFS files überprüfen
+  checkSPIFFSFiles();
+  
   // WebSocket
   ws.onEvent(onEvent);
   server.addHandler(&ws);
-
+  
   // Static Files
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *r){
-    r->send(SPIFFS, "/index.html", "text/html");
-  });
-  server.on("/sketch.js", HTTP_GET, [](AsyncWebServerRequest *r){
-    r->send(SPIFFS, "/sketch.js", "application/javascript");
-  });
+  server.serveStatic("/", SPIFFS, "/").setDefaultFile("index.html");
+  
   server.onNotFound([](AsyncWebServerRequest *r){
+    Serial.println("Server Route not found");
     r->send(404, "text/plain", "Not found");
   });
 
@@ -157,7 +174,6 @@ void setup(){
 
   Serial.printf("Verbinde mit WLAN: %s\n", ssid);
   WiFi.begin(ssid, password);
-  Serial.print("Verbinde WLAN");
   
   // Max. 6 Versuche
   int attempts = 0;
