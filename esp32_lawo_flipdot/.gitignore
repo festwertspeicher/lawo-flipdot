@@ -1,0 +1,13 @@
+# Secrets
+secrets.h
+
+# Arduino / PlatformIO / IDE files (Standard-Liste aus dem Internet, darf gerne erweitert werden)
+.DS_Store
+.pio/
+.vscode/
+build/
+*.bin
+*.elf
+*.hex
+*.map
+

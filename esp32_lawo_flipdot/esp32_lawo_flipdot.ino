@@ -2,9 +2,7 @@
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <SPIFFS.h>
-
-const char* ssid     = "SECRET_SSID";
-const char* password = "SECRET_PW";
+#include "secrets.h"
 
 #define RX_PIN 16
 #define TX_PIN 17
