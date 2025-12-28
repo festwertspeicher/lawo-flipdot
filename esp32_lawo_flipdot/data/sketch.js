@@ -139,6 +139,24 @@ function createUI() {
       .parent(mode1Container)
       .mousePressed(() => { fillGrid(1); drawGrid(); });
 
+    // Text Rendering Tools
+    const textTools = createDiv().parent(mode1Container).style('display', 'flex').style('gap', '10px').style('align-items', 'center').style('margin-top', '10px');
+
+    const inpText = createInput('HELLO').parent(textTools).style('width', '100px');
+
+    const selFont = createSelect().parent(textTools);
+    selFont.option('Sans-Serif', 'sans-serif');
+    selFont.option('Serif', 'serif');
+    selFont.option('Monospace', 'monospace');
+    selFont.option('Arial', 'Arial');
+    selFont.option('Courier New', 'Courier New');
+
+    const inpFontSize = createInput('12').parent(textTools).attribute('type', 'number').style('width', '40px');
+
+    createButton('Render Text')
+      .parent(textTools)
+      .mousePressed(() => renderTextToGrid(inpText.value(), selFont.value(), parseInt(inpFontSize.value())));
+
     // Pattern Settings
     const editorSettings = createDiv().parent(mode1Container).style('display', 'flex').style('gap', '10px').style('align-items', 'center');
 
@@ -190,8 +208,6 @@ function onModeChange() {
   if (pwd) {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(`setMode:${newMode}:${pwd}`);
-    } else {
-      alert("Not connected!");
     }
   } else {
     // wait for server update to correct us if needed.
@@ -201,6 +217,43 @@ function onModeChange() {
 // Füll-Funktionen
 function fillGrid(v) {
   for (let x = 0; x < colsX; x++) grid[x].fill(v);
+}
+
+function renderTextToGrid(textStr, fontName, fontSize) {
+  // 1. Create an offscreen buffer at exact resolution
+  let pg = createGraphics(colsX, rowsY);
+  pg.background(0); // Black background
+  pg.fill(255);     // White text (to represent dots)
+  pg.noStroke();
+
+  // 2. Configure text settings
+  pg.textFont(fontName);
+  pg.textSize(fontSize);
+  pg.textAlign(CENTER, CENTER);
+
+  // 3. Draw text centered
+  // You might need to adjust y-offset depending on font baseline
+  pg.text(textStr, colsX / 2, rowsY / 2);
+
+  // 4. Read pixels and update grid
+  pg.loadPixels();
+  for (let x = 0; x < colsX; x++) {
+    for (let y = 0; y < rowsY; y++) {
+      // Get pixel index in pg.pixels (which is 1D array of RGBA)
+      // p5 pixel density is usually 1, but let's be safe
+      // 4 channels (R, G, B, A) per pixel
+      // We check Red channel of the pixel (0..255)
+      // Since we drew white on black, > 128 is "ON"
+      let index = 4 * (y * colsX + x);
+      let r = pg.pixels[index];
+
+      // Update main grid
+      grid[x][y] = r > 128 ? 1 : 0;
+    }
+  }
+
+  drawGrid(); // Update main canvas
+  pg.remove(); // Cleanup
 }
 
 function savePattern(filename, useBacklight) {
