@@ -136,8 +136,10 @@ void loadPatterns() {
     String name = String(file.name());
     if(name.endsWith(".json")) {
       size_t fSize = file.size();
+      
+      String fullPath = name;
       if (!fullPath.startsWith("/")) {
-        if (!fullPath.startsWith("/patterns/") && !fullPath.startsWith("patterns/")) {
+        if (!fullPath.startsWith("patterns/") && !fullPath.startsWith("/patterns/")) {
              fullPath = "/patterns/" + fullPath; 
         } else if (!fullPath.startsWith("/")) {
              fullPath = "/" + fullPath;
