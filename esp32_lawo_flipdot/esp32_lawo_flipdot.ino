@@ -25,6 +25,9 @@ bool stateInvert    = false;
 bool stateActive    = true;
 bool stateQuick     = true;
 
+const int MATRIX_BYTES = 168; // 84 * 2
+uint8_t matrixBuffer[MATRIX_BYTES] = {0};
+
 long lastWifiCheck = 0;
 const long WIFI_CHECK_INTERVAL = 10000; 
 
@@ -56,6 +59,12 @@ void handleWebSocketMessage(void*, uint8_t *data, size_t len) {
       case BYTEINVERT:   stateInvert    = (param == BYTEON);    break;
       case BYTEACTIVE:   stateActive    = (param == BYTEON);    break;
       case BYTEFASTMODE: stateQuick     = (param == BYTEON);    break;
+      case BYTEPICTURE:
+        // Bild-Daten speichern (param ist hier die Länge, z.B. 168)
+        if (len >= 3 + param && param <= MATRIX_BYTES) {
+          memcpy(matrixBuffer, data + 3, param);
+        }
+        break;
     }
   }
 
@@ -110,6 +119,16 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
         serializeJson(doc, js);
         client->text(js);
         Serial.printf("WS→Client JSON: %s\n", js.c_str());
+
+        // aktuelles Bild senden (matrixBuffer wird oben im RAM gespeichert)
+        uint8_t *msgBuf = new uint8_t[3 + MATRIX_BYTES];
+        msgBuf[0] = BYTESTART; 
+        msgBuf[1] = BYTEPICTURE; 
+        msgBuf[2] = MATRIX_BYTES;
+        memcpy(msgBuf + 3, matrixBuffer, MATRIX_BYTES);
+        client->binary(msgBuf, 3 + MATRIX_BYTES);
+        delete[] msgBuf;
+        Serial.println("WS→Client: Saved Matrix Buffer sent");
       }
     }
   }

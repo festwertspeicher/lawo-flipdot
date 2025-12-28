@@ -161,8 +161,34 @@ function handleWSMessage(evt) {
     drawGrid();
   } else {
     const data = new Uint8Array(evt.data);
+    // Check auf Picture-Frame (FF A0 LEN ...)
+    if (data.length > 3 && data[0] === BYTESTART && data[1] === BYTEPICTURE) {
+      const len = data[2];
+      if (len === bytesToSend && data.length >= 3 + len) {
+        console.log('← Received full matrix state');
+        updateGridFromBytes(data.subarray(3, 3 + len));
+        return;
+      }
+    }
+
+    // Sonst Echo-Bytes loggen
     data.forEach(b => console.log('←', b.toString(16).padStart(2, '0')));
   }
+}
+
+function updateGridFromBytes(bytes) {
+  let byteIdx = 0;
+  for (let x = 0; x < colsX; x++) {
+    for (let block = 0; block < rowsY / 8; block++) {
+      let b = bytes[byteIdx++];
+      for (let bit = 0; bit < 8; bit++) {
+        // von links nach rechts (?)
+        const val = (b >> (7 - bit)) & 1;
+        grid[x][block * 8 + bit] = val;
+      }
+    }
+  }
+  drawGrid();
 }
 
 let paintValue = 1;    // wird beim Press festgelegt
