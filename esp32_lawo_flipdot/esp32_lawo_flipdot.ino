@@ -137,14 +137,20 @@ void loadPatterns() {
     if(name.endsWith(".json")) {
       // Open file again to verify size reliably
       if (!name.startsWith("/")) name = "/" + name;
+      
       File checkFile = SPIFFS.open(name, "r");
-      if (checkFile && checkFile.size() > 0) {
-        patterns.push_back(name);
-        Serial.print("Found pattern: "); Serial.print(name); Serial.print(" ("); Serial.print(checkFile.size()); Serial.println(" bytes)");
+      if (checkFile) {
+        size_t s = checkFile.size();
+        if (s > 0) {
+          patterns.push_back(name);
+          Serial.print("Found pattern: "); Serial.print(name); Serial.print(" ("); Serial.print(s); Serial.println(" bytes)");
+        } else {
+          Serial.print("Skipping empty pattern: "); Serial.println(name);
+        }
+        checkFile.close();
       } else {
-        Serial.print("Skipping empty pattern: "); Serial.println(name);
+         Serial.print("Could not open file to check size: "); Serial.println(name);
       }
-      if(checkFile) checkFile.close();
     }
     file = root.openNextFile();
   }
@@ -312,6 +318,9 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
 // SPIFFS Inhalt listen
 void checkSPIFFSFiles() {
   Serial.println("Checking SPIFFS files:");
+  
+  Serial.printf("SPIFFS Total: %u, Used: %u\n", SPIFFS.totalBytes(), SPIFFS.usedBytes());
+
   File root = SPIFFS.open("/");
   File file = root.openNextFile();
   int fileCount = 0;
@@ -340,6 +349,10 @@ void setup(){
   
   // SPIFFS files überprüfen
   checkSPIFFSFiles();
+
+  // If all files are empty, maybe format?
+  // Use caution with format. For now, just logging.
+  
   loadPatterns();
   
   // WebSocket
@@ -373,7 +386,13 @@ void setup(){
   // Station-Mode sicherstellen (https://randomnerdtutorials.com/esp32-useful-wi-fi-functions-arduino/#1)
   WiFi.mode(WIFI_STA); 
 
-  Serial.printf("Verbinde mit WLAN: %s\n", ssid);
+  if (ssid != NULL) {
+    Serial.printf("Verbinde mit WLAN: %s\n", ssid);
+  } else {
+    Serial.println("Fehler: SSID ist NULL!");
+    return;
+  }
+
   WiFi.begin(ssid, password);
   
   // Max. 6 Versuche
@@ -410,13 +429,13 @@ void setup(){
       int rssi = WiFi.RSSI(i);
       int channel = WiFi.channel(i);
       Serial.printf("  %d: %s (RSSI: %d dBm, Channel: %d)\n", i+1, ssidName.c_str(), rssi, channel);
-      if (ssidName == String(ssid)) {
+      if (ssidName == String(ssid != NULL ? ssid : "")) {
         ssidFound = true;
-        Serial.printf("Netzwerk '%s' gefunden!\n", ssid);
+        Serial.printf("Netzwerk '%s' gefunden!\n", (ssid != NULL ? ssid : "NULL"));
       }
     }
     if (!ssidFound) {
-      Serial.printf("Gewünschtes Netzwerk '%s' NICHT gefunden\n", ssid);
+      Serial.printf("Gewünschtes Netzwerk '%s' NICHT gefunden\n", (ssid != NULL ? ssid : "NULL"));
     }
     
     Serial.println("Bitte für Verbindung sorgen und Device neustarten.");
