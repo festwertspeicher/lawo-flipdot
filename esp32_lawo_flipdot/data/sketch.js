@@ -156,11 +156,9 @@ function createUI() {
     selFont.option('Arial', 'Arial');
     selFont.option('Courier New', 'Courier New');
 
-    const inpFontSize = createInput('12').parent(textTools).attribute('type', 'number').style('width', '40px');
-
     createButton('Render Text')
       .parent(textTools)
-      .mousePressed(() => renderTextToGrid(inpText.value(), selFont.value(), parseInt(inpFontSize.value())));
+      .mousePressed(() => renderTextToGrid(inpText.value(), selFont.value(), 12));
 
     // Pattern Settings
     const editorSettings = createDiv().parent(mode1Container).style('display', 'flex').style('gap', '10px').style('align-items', 'center');
