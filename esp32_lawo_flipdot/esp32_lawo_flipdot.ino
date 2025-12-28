@@ -135,12 +135,16 @@ void loadPatterns() {
   while(file){
     String name = String(file.name());
     if(name.endsWith(".json")) {
-      if (file.size() > 0) {
+      // Open file again to verify size reliably
+      if (!name.startsWith("/")) name = "/" + name;
+      File checkFile = SPIFFS.open(name, "r");
+      if (checkFile && checkFile.size() > 0) {
         patterns.push_back(name);
-        Serial.print("Found pattern: "); Serial.print(name); Serial.print(" ("); Serial.print(file.size()); Serial.println(" bytes)");
+        Serial.print("Found pattern: "); Serial.print(name); Serial.print(" ("); Serial.print(checkFile.size()); Serial.println(" bytes)");
       } else {
         Serial.print("Skipping empty pattern: "); Serial.println(name);
       }
+      if(checkFile) checkFile.close();
     }
     file = root.openNextFile();
   }
@@ -152,52 +156,59 @@ void updatePattern() {
     lastModeUpdate = millis();
     if (patterns.empty()) return;
 
-    // Cycle index
-    currentPatternIndex = (currentPatternIndex + 1) % patterns.size();
-    String path = patterns[currentPatternIndex];
-    // Ensure path starts with slash if needed, but file.name() usually has it or not depending on fs implementation
-    // SPIFFS flat fs usually includes full path.
-    if (!path.startsWith("/")) path = "/" + path; // Safety
-
-    File f = SPIFFS.open(path, "r");
-    if (f) {
-      Serial.printf("Opening pattern: %s, Size: %d\n", path.c_str(), f.size());
-      if (f.size() == 0) {
-        Serial.println("Error: Pattern file is empty!");
-        f.close();
-        return;
-      }
-
-      JsonDocument doc; // Dynamic size? 168 bytes is small.
-      DeserializationError error = deserializeJson(doc, f);
-      if (!error) {
+    // Try up to patterns.size() times to find a valid pattern
+    for(size_t attempt = 0; attempt < patterns.size(); attempt++) {
+        // Cycle index
+        currentPatternIndex = (currentPatternIndex + 1) % patterns.size();
+        String path = patterns[currentPatternIndex];
         
-        // Handle Backlight if present in JSON
-        if (doc.containsKey("backlight")) {
-            bool bl = doc["backlight"];
-            if (bl != stateBacklight) {
-                stateBacklight = bl;
-                uint8_t cmd[] = { BYTESTART, BYTEBACKL, bl ? BYTEON : BYTEOFF };
-                matrixSerial.write(cmd, 3);
-            }
-        }
-        
-        JsonArray data = doc["data"];
-        if (data.size() == MATRIX_BYTES) {
-          for (int i = 0; i < MATRIX_BYTES; i++) {
-            matrixBuffer[i] = data[i];
+        if (!path.startsWith("/")) path = "/" + path; // Safety
+    
+        File f = SPIFFS.open(path, "r");
+        if (f) {
+          size_t fSize = f.size();
+          if (fSize == 0) {
+            Serial.printf("Error: Pattern file '%s' is empty! Skipping...\n", path.c_str());
+            f.close();
+            continue; // Try next pattern immediately
           }
-          sendBufferToMatrix();
-          Serial.printf("Displayed Pattern: %s\n", path.c_str());
+          
+          Serial.printf("Opening pattern: %s, Size: %d\n", path.c_str(), fSize);
+    
+          JsonDocument doc; 
+          DeserializationError error = deserializeJson(doc, f);
+          if (!error) {
+            // ... (rest of logic) ...
+            
+            // Handle Backlight if present in JSON
+            if (doc.containsKey("backlight")) {
+                bool bl = doc["backlight"];
+                if (bl != stateBacklight) {
+                    stateBacklight = bl;
+                    uint8_t cmd[] = { BYTESTART, BYTEBACKL, bl ? BYTEON : BYTEOFF };
+                    matrixSerial.write(cmd, 3);
+                }
+            }
+            
+            JsonArray data = doc["data"];
+            if (data.size() == MATRIX_BYTES) {
+              for (int i = 0; i < MATRIX_BYTES; i++) {
+                matrixBuffer[i] = data[i];
+              }
+              sendBufferToMatrix();
+              Serial.printf("Displayed Pattern: %s\n", path.c_str());
+              f.close();
+              return; // Success!
+            } else {
+              Serial.println("Pattern data size mismatch");
+            }
+          } else {
+            Serial.print("JSON Parse Error: "); Serial.println(error.c_str());
+          }
+          f.close();
         } else {
-          Serial.println("Pattern data size mismatch");
+          Serial.print("Failed to open pattern: "); Serial.println(path);
         }
-      } else {
-        Serial.print("JSON Parse Error: "); Serial.println(error.c_str());
-      }
-      f.close();
-    } else {
-      Serial.print("Failed to open pattern: "); Serial.println(path);
     }
   }
 }
