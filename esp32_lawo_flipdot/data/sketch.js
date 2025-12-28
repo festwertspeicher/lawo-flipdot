@@ -17,7 +17,7 @@ const bytesToSend = (rowsY / 8) * colsX;
 let grid = [];
 let ws;
 // Checkbox-Referenzen
-let cbBacklight, cbInvert, cbActive, cbQuick;
+let cbBacklight, cbInvert, cbQuick;
 let selMode;
 let mode0Container; // Container for Mode 0 specific tools
 let mode1Container; // Container for Mode 1 (Pattern Editor) tools
@@ -115,7 +115,6 @@ function createUI() {
     const settingsDiv = createDiv().parent(controls).class('control-group');
     cbBacklight = createCheckbox('Backlight', false).parent(settingsDiv).attribute('disabled', '');
     cbInvert = createCheckbox('Invert', false).parent(settingsDiv).attribute('disabled', '');
-    cbActive = createCheckbox('Active', false).parent(settingsDiv).attribute('disabled', '');
     cbQuick = createCheckbox('QuickUpdt', false).parent(settingsDiv).attribute('disabled', '');
 
     // --- Mode 0 Tools (Fill, Send) ---
@@ -184,7 +183,6 @@ function createUI() {
     sendCmd(BYTEINVERT, cbInvert.checked() ? BYTEON : BYTEOFF);
     drawGrid();
   });
-  cbActive.changed(() => sendCmd(BYTEACTIVE, cbActive.checked() ? BYTEON : BYTEOFF));
   cbQuick.changed(() => sendCmd(BYTEFASTMODE, cbQuick.checked() ? BYTEON : BYTEOFF));
 
   // Initialize visibility
@@ -354,7 +352,6 @@ function handleWSMessage(evt) {
     [
       { cb: cbBacklight, key: 'backlight' },
       { cb: cbInvert, key: 'invert' },
-      { cb: cbActive, key: 'active' },
       { cb: cbQuick, key: 'quick' }
     ].forEach(({ cb, key }) => {
       if (cb) {
