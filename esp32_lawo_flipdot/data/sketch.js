@@ -19,6 +19,8 @@ let ws;
 // Checkbox-Referenzen
 let cbBacklight, cbInvert, cbActive, cbQuick;
 let selMode;
+let mode0Container; // Container for Mode 0 specific tools
+let mode1Container; // Container for Mode 1 (Pattern Editor) tools
 // zuletzt bearbeiteter Pixel
 let lastX = -1, lastY = -1;
 
@@ -58,7 +60,7 @@ function setup() {
   }
 
   // UI-Elemente anlegen
-  createButtons();
+  createUI();
 
   // WebSocket
   connectWebSocket();
@@ -80,39 +82,78 @@ function drawGrid() {
   }
 }
 
-function createButtons() {
-  const container = select('#controls');
-  container.html('');
+function createUI() {
+  const header = select('#ui-header');
+  const controls = select('#controls');
 
-  // Muster-Buttons ohne Random
-  createButton('Fill Black')
-    .parent(container)
-    .mousePressed(() => { fillGrid(0); drawGrid(); });
+  // Clear existing content if any (though setup runs once)
+  if (header) header.html('');
+  if (controls) controls.html('');
 
-  createButton('Fill Yellow')
-    .parent(container)
-    .mousePressed(() => { fillGrid(1); drawGrid(); });
+  // --- Header: Mode Selector ---
+  if (header) {
+    createSpan('Mode: ').parent(header).style('font-weight', 'bold');
+    selMode = createSelect();
+    selMode.parent(header);
+    selMode.option('Individual Image', 0);
+    selMode.option('Pattern Cycle', 1);
+    selMode.option('Chaos Mode', 2);
+    selMode.changed(onModeChange);
+  }
 
-  // Send-Button rechts
-  createButton('Send')
-    .parent(container)
-    .class('send-button')
-    .mousePressed(sendMatrix);
+  if (controls) {
+    // --- Global Settings ---
+    const settingsDiv = createDiv().parent(controls).class('control-group');
+    cbBacklight = createCheckbox('Backlight', false).parent(settingsDiv).attribute('disabled', '');
+    cbInvert = createCheckbox('Invert', false).parent(settingsDiv).attribute('disabled', '');
+    cbActive = createCheckbox('Active', false).parent(settingsDiv).attribute('disabled', '');
+    cbQuick = createCheckbox('QuickUpdt', false).parent(settingsDiv).attribute('disabled', '');
 
-  // Command-Checkboxen
-  cbBacklight = createCheckbox('Backlight', false).parent(container).attribute('disabled', '');
-  cbInvert = createCheckbox('Invert', false).parent(container).attribute('disabled', '');
-  cbActive = createCheckbox('Active', false).parent(container).attribute('disabled', '');
-  cbQuick = createCheckbox('QuickUpdt', false).parent(container).attribute('disabled', '');
+    // --- Mode 0 Tools (Fill, Send) ---
+    mode0Container = createDiv().parent(controls).class('control-group');
 
-  // Mode Select
-  selMode = createSelect();
-  selMode.parent(container);
-  selMode.option('Individual Image', 0);
-  selMode.option('Pattern Cycle', 1);
-  selMode.option('Chaos Mode', 2);
-  selMode.changed(onModeChange);
+    createButton('Fill Black')
+      .parent(mode0Container)
+      .mousePressed(() => { fillGrid(0); drawGrid(); });
 
+    createButton('Fill Yellow')
+      .parent(mode0Container)
+      .mousePressed(() => { fillGrid(1); drawGrid(); });
+
+    createButton('Send')
+      .parent(mode0Container)
+      .class('send-button')
+      .mousePressed(sendMatrix);
+  }
+
+  // --- Mode 1 Tools (Pattern Editor) ---
+  if (controls) {
+    mode1Container = createDiv().parent(controls).class('control-group').style('display', 'none');
+
+    // Editor Tools
+    createButton('Fill Black')
+      .parent(mode1Container)
+      .mousePressed(() => { fillGrid(0); drawGrid(); });
+
+    createButton('Fill Yellow')
+      .parent(mode1Container)
+      .mousePressed(() => { fillGrid(1); drawGrid(); });
+
+    // Pattern Settings
+    const editorSettings = createDiv().parent(mode1Container).style('display', 'flex').style('gap', '10px').style('align-items', 'center');
+
+    createSpan('Filename:').parent(editorSettings);
+    const inpFilename = createInput('pattern.json').parent(editorSettings).style('width', '150px');
+
+    const cbPatternBacklight = createCheckbox('Backlight On', false).parent(editorSettings);
+
+    createButton('Save to Device')
+      .parent(mode1Container)
+      .class('send-button')
+      .mousePressed(() => savePattern(inpFilename.value(), cbPatternBacklight.checked()));
+  }
+
+  // Checkbox Event Listeners
   cbBacklight.changed(() => sendCmd(BYTEBACKL, cbBacklight.checked() ? BYTEON : BYTEOFF));
   cbInvert.changed(() => {
     sendCmd(BYTEINVERT, cbInvert.checked() ? BYTEON : BYTEOFF);
@@ -120,6 +161,27 @@ function createButtons() {
   });
   cbActive.changed(() => sendCmd(BYTEACTIVE, cbActive.checked() ? BYTEON : BYTEOFF));
   cbQuick.changed(() => sendCmd(BYTEFASTMODE, cbQuick.checked() ? BYTEON : BYTEOFF));
+
+  // Initialize visibility
+  updateUIForMode(selMode ? selMode.value() : 0);
+}
+
+function updateUIForMode(mode) {
+  if (!mode0Container || !mode1Container) return;
+
+  // Convert mode to integer just in case
+  mode = parseInt(mode);
+
+  if (mode === 0) {
+    mode0Container.style('display', 'flex');
+    mode1Container.style('display', 'none');
+  } else if (mode === 1) {
+    mode0Container.style('display', 'none');
+    mode1Container.style('display', 'flex');
+  } else {
+    mode0Container.style('display', 'none');
+    mode1Container.style('display', 'none');
+  }
 }
 
 function onModeChange() {
@@ -131,14 +193,57 @@ function onModeChange() {
     } else {
       alert("Not connected!");
     }
+  } else {
+    // wait for server update to correct us if needed.
   }
-  // Note: If cancelled or failed, the UI might stay on the new selection 
-  // until the next state update from server resets it.
 }
 
 // Füll-Funktionen
 function fillGrid(v) {
   for (let x = 0; x < colsX; x++) grid[x].fill(v);
+}
+
+function savePattern(filename, useBacklight) {
+  const arr = [];
+  for (let x = 0; x < colsX; x++) {
+    for (let block = 0; block < rowsY / 8; block++) {
+      let b = 0;
+      for (let bit = 0; bit < 8; bit++) {
+        if (grid[x][block * 8 + bit]) b |= 1 << (7 - bit);
+      }
+      arr.push(b);
+    }
+  }
+
+  const json = {
+    data: arr
+  };
+
+  if (useBacklight) {
+    json.backlight = true;
+  } else {
+    // Let's explicitly set it to false if unchecked so the pattern enforces "No Backlight".
+    json.backlight = false;
+  }
+
+  // Send to server
+  fetch(`/api/save?filename=${encodeURIComponent(filename)}`, {
+    method: 'POST',
+    body: JSON.stringify(json),
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  })
+    .then(response => {
+      if (response.ok) {
+        alert(`Pattern '${filename}' saved successfully to device!`);
+      } else {
+        alert('Error saving pattern: ' + response.statusText);
+      }
+    })
+    .catch(error => {
+      alert('Network error saving pattern: ' + error);
+    });
 }
 
 // Matrix senden
@@ -178,18 +283,15 @@ function handleWSMessage(evt) {
       { cb: cbActive, key: 'active' },
       { cb: cbQuick, key: 'quick' }
     ].forEach(({ cb, key }) => {
-      cb.elt.disabled = false;
-      cb.checked(s[key] === 1);
+      if (cb) {
+        cb.elt.disabled = false;
+        cb.checked(s[key] === 1);
+      }
     });
 
     if (s.mode !== undefined) {
-      selMode.selected(s.mode);
-      const isWS = (s.mode == 0);
-      const sendBtn = select('.send-button');
-      if (sendBtn) {
-        if (!isWS) sendBtn.attribute('disabled', '');
-        else sendBtn.removeAttribute('disabled');
-      }
+      if (selMode) selMode.selected(s.mode);
+      updateUIForMode(s.mode);
     }
 
     drawGrid();
@@ -228,8 +330,9 @@ function updateGridFromBytes(bytes) {
 let paintValue = 1;    // wird beim Press festgelegt
 
 function handlePixelPaint() {
-  // Disable painting if not in Individual Image mode
-  if (selMode && selMode.value() != 0) return;
+  // Allow painting in Mode 0 (Individual) and Mode 1 (Pattern Editor)
+  // In Mode 1, we just edit the local grid for saving, we don't send updates.
+  if (selMode && selMode.value() != 0 && selMode.value() != 1) return;
 
   const x = floor(mouseX / 10);
   const y = floor(mouseY / 10);

@@ -17,20 +17,42 @@
                 align-items: center;
             }
 
+            #ui-header {
+                width: 100%;
+                background: #ddd;
+                padding: 10px;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                gap: 20px;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                position: sticky;
+                top: 0;
+                z-index: 100;
+            }
+
             #sketch {
                 margin-top: 20px;
             }
 
             #controls {
                 display: flex;
+                flex-direction: column;
+                gap: 15px;
+                margin: 20px;
+                align-items: center;
+            }
+
+            .control-group {
+                display: flex;
                 flex-wrap: wrap;
                 gap: 10px;
-                margin: 20px;
                 justify-content: center;
             }
 
             #controls button,
-            #controls input[type=checkbox]+label {
+            #controls input[type=checkbox]+label,
+            #ui-header select {
                 padding: 8px 12px;
                 font-size: 14px;
                 cursor: pointer;
@@ -53,11 +75,9 @@
     </head>
 
     <body>
+        <div id="ui-header"></div>
         <div id="sketch"></div>
-        <div id="controls">
-            <div id="checkboxes" class="checkbox-row"></div>
-            <div id="buttons" class="button-row"></div>
-        </div>
+        <div id="controls"></div>
 
         <!-- Datei-Upload -->
         <form id="uploadForm" enctype="multipart/form-data">
