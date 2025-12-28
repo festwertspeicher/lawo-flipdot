@@ -5,6 +5,7 @@
 
 const char* ssid     = "DEIN_WLAN_NAME";
 const char* password = "DEIN_WLAN_PASSWORT";
+const char* modePassword = "MODE_CHANGE_PASSWORD";
 
 #endif
 

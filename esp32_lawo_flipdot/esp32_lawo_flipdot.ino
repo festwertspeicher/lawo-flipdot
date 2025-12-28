@@ -3,6 +3,7 @@
 #include <ESPAsyncWebServer.h>
 #include <SPIFFS.h>
 #include <ArduinoJson.h>
+#include <vector>
 #include "secrets.h"
 
 #define RX_PIN 16
@@ -15,11 +16,26 @@ const uint8_t BYTEBACKL    = 0xA1;
 const uint8_t BYTEINVERT   = 0xA2;
 const uint8_t BYTEACTIVE   = 0xA3;
 const uint8_t BYTEFASTMODE = 0xA4;
+const uint8_t BYTEMODE     = 0xA5; // New: Mode switch command
 
 const uint8_t BYTEON  = 0x01;
 const uint8_t BYTEOFF = 0x00;
 
+// Operation Modes
+enum OperationMode {
+  MODE_INDIVIDUALIMAGE = 0,
+  MODE_PATTERN = 1,
+  MODE_CHAOS = 2
+};
+
 // aktuelle States
+OperationMode currentMode = MODE_PATTERN;
+long lastModeUpdate = 0;
+std::vector<String> patterns;
+int currentPatternIndex = 0;
+const long PATTERN_INTERVAL = 20 * 1000;
+const long CHAOS_INTERVAL = 1 * 1000;
+
 bool stateBacklight = false;
 bool stateInvert    = false;
 bool stateActive    = true;
@@ -54,6 +70,13 @@ void handleWebSocketMessage(void*, uint8_t *data, size_t len) {
   // Update state-flags bei Commands
   if(len >= 3 && data[0] == BYTESTART) {
     uint8_t action = data[1], param = data[2];
+    
+    // Block Picture updates if not in WS mode
+    if (action == BYTEPICTURE && currentMode != MODE_INDIVIDUALIMAGE) {
+      Serial.println("Ignored Picture update (Not in INDIVIDUALIMAGE Mode)");
+      return; 
+    }
+
     switch(action) {
       case BYTEBACKL:    stateBacklight = (param == BYTEON);    break;
       case BYTEINVERT:   stateInvert    = (param == BYTEON);    break;
@@ -66,6 +89,9 @@ void handleWebSocketMessage(void*, uint8_t *data, size_t len) {
         }
         break;
     }
+  } else {
+    Serial.println("Update is not in valid format.");
+    return;
   }
 
   // 1) in Seriellen Monitor loggen
@@ -89,6 +115,92 @@ void forwardMatrixResponses(){
   }
 }
 
+// Helper to send current matrixBuffer to Matrix
+void sendBufferToMatrix() {
+  uint8_t header[] = { BYTESTART, BYTEPICTURE, (uint8_t)MATRIX_BYTES };
+  matrixSerial.write(header, 3);
+  matrixSerial.write(matrixBuffer, MATRIX_BYTES);
+}
+
+void loadPatterns() {
+  patterns.clear();
+  File root = SPIFFS.open("/patterns");
+  if(!root || !root.isDirectory()){
+    Serial.println("Patterns directory not found!");
+    // Create it if missing?
+    // SPIFFS doesn't really have directories, just filenames with slashes.
+    return;
+  }
+  File file = root.openNextFile();
+  while(file){
+    String name = String(file.name());
+    if(name.endsWith(".json")) {
+      patterns.push_back(name);
+      Serial.print("Found pattern: "); Serial.println(name);
+    }
+    file = root.openNextFile();
+  }
+  Serial.printf("Total patterns found: %d\n", patterns.size());
+}
+
+void updatePattern() {
+  if (millis() - lastModeUpdate >= PATTERN_INTERVAL) {
+    lastModeUpdate = millis();
+    if (patterns.empty()) return;
+
+    // Cycle index
+    currentPatternIndex = (currentPatternIndex + 1) % patterns.size();
+    String path = patterns[currentPatternIndex];
+    // Ensure path starts with slash if needed, but file.name() usually has it or not depending on fs implementation
+    // SPIFFS flat fs usually includes full path.
+    if (!path.startsWith("/")) path = "/" + path; // Safety
+
+    File f = SPIFFS.open(path, "r");
+    if (f) {
+      JsonDocument doc; // Dynamic size? 168 bytes is small.
+      DeserializationError error = deserializeJson(doc, f);
+      if (!error) {
+        JsonArray data = doc["data"];
+        if (data.size() == MATRIX_BYTES) {
+          for (int i = 0; i < MATRIX_BYTES; i++) {
+            matrixBuffer[i] = data[i];
+          }
+          sendBufferToMatrix();
+          Serial.printf("Displayed Pattern: %s\n", path.c_str());
+        } else {
+          Serial.println("Pattern data size mismatch");
+        }
+      } else {
+        Serial.print("JSON Parse Error: "); Serial.println(error.c_str());
+      }
+      f.close();
+    } else {
+      Serial.print("Failed to open pattern: "); Serial.println(path);
+    }
+  }
+}
+
+void updateChaos() {
+  if (millis() - lastModeUpdate >= CHAOS_INTERVAL) {
+    lastModeUpdate = millis();
+    
+    // Randomize buffer
+    for (int i = 0; i < MATRIX_BYTES; i++) {
+      matrixBuffer[i] = random(0, 256);
+    }
+    
+    // Randomly toggle backlight sometimes
+    if (random(0, 100) < 5) { // 5% chance
+       bool newBl = !stateBacklight;
+       stateBacklight = newBl;
+       uint8_t cmd[] = { BYTESTART, BYTEBACKL, newBl ? BYTEON : BYTEOFF };
+       matrixSerial.write(cmd, 3);
+    }
+
+    sendBufferToMatrix();
+  }
+}
+
 // Event-Handler für WS
 void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
              AwsEventType type, void *arg, uint8_t *data, size_t len) {
@@ -105,8 +217,9 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
       handleWebSocketMessage(nullptr, data, len);
     }
     else if(info->opcode == WS_TEXT){
-      // Text-Frame (z.B. "getState")
+      // Text-Frame (z.B. "getState" oder "setMode:1:pass")
       String msg = String((char*)data).substring(0, len);
+      
       if(msg == "getState"){
         // JSON zusammenbauen
         JsonDocument doc;
@@ -114,13 +227,14 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
         doc["invert"]    = stateInvert    ? 1 : 0;
         doc["active"]    = stateActive    ? 1 : 0;
         doc["quick"]     = stateQuick     ? 1 : 0;
+        doc["mode"]      = (int)currentMode;
 
         String js;
         serializeJson(doc, js);
         client->text(js);
-        Serial.printf("WS→Client JSON: %s\n", js.c_str());
+        // Serial.printf("WS→Client JSON: %s\n", js.c_str());
 
-        // aktuelles Bild senden (matrixBuffer wird oben im RAM gespeichert)
+        // aktuelles Bild senden
         uint8_t *msgBuf = new uint8_t[3 + MATRIX_BYTES];
         msgBuf[0] = BYTESTART; 
         msgBuf[1] = BYTEPICTURE; 
@@ -128,7 +242,35 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
         memcpy(msgBuf + 3, matrixBuffer, MATRIX_BYTES);
         client->binary(msgBuf, 3 + MATRIX_BYTES);
         delete[] msgBuf;
-        Serial.println("WS→Client: Saved Matrix Buffer sent");
+      }
+      else if (msg.startsWith("setMode:")) {
+        // Format: setMode:<MODE>:<PASS>
+        int firstColon = msg.indexOf(':');
+        int secondColon = msg.indexOf(':', firstColon + 1);
+        if (secondColon > 0) {
+           String modeStr = msg.substring(firstColon + 1, secondColon);
+           String passStr = msg.substring(secondColon + 1);
+           
+           if (passStr == String(modePassword)) {
+             int newMode = modeStr.toInt();
+             if (newMode >= 0 && newMode <= 2) {
+               currentMode = (OperationMode)newMode;
+               lastModeUpdate = 0; // Trigger immediate update
+               
+               // Broadcast new mode to all clients
+               JsonDocument doc;
+               doc["mode"] = (int)currentMode;
+               doc["backlight"] = stateBacklight ? 1 : 0; // Send full state just in case
+               // ...
+               String js;
+               serializeJson(doc, js);
+               ws.textAll(js);
+               Serial.printf("Mode changed to %d\n", newMode);
+             }
+           } else {
+             Serial.println("Invalid Password for Mode Change");
+           }
+        }
       }
     }
   }
@@ -163,6 +305,7 @@ void setup(){
   
   // SPIFFS files überprüfen
   checkSPIFFSFiles();
+  loadPatterns();
   
   // WebSocket
   ws.onEvent(onEvent);
@@ -285,6 +428,13 @@ void loop(){
       // Info, wenn verbunden
       Serial.printf("WLAN OK - IP: %s, RSSI: %d dBm\n", WiFi.localIP().toString().c_str(), WiFi.RSSI());
     }
+  }
+
+  // Mode Loops
+  if (currentMode == MODE_PATTERN) {
+    updatePattern();
+  } else if (currentMode == MODE_CHAOS) {
+    updateChaos();
   }
 
   forwardMatrixResponses();

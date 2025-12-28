@@ -18,6 +18,7 @@ let grid = [];
 let ws;
 // Checkbox-Referenzen
 let cbBacklight, cbInvert, cbActive, cbQuick;
+let selMode;
 // zuletzt bearbeiteter Pixel
 let lastX = -1, lastY = -1;
 
@@ -104,6 +105,14 @@ function createButtons() {
   cbActive = createCheckbox('Active', false).parent(container).attribute('disabled', '');
   cbQuick = createCheckbox('QuickUpdt', false).parent(container).attribute('disabled', '');
 
+  // Mode Select
+  selMode = createSelect();
+  selMode.parent(container);
+  selMode.option('Individual Image', 0);
+  selMode.option('Pattern Cycle', 1);
+  selMode.option('Chaos Mode', 2);
+  selMode.changed(onModeChange);
+
   cbBacklight.changed(() => sendCmd(BYTEBACKL, cbBacklight.checked() ? BYTEON : BYTEOFF));
   cbInvert.changed(() => {
     sendCmd(BYTEINVERT, cbInvert.checked() ? BYTEON : BYTEOFF);
@@ -111,6 +120,20 @@ function createButtons() {
   });
   cbActive.changed(() => sendCmd(BYTEACTIVE, cbActive.checked() ? BYTEON : BYTEOFF));
   cbQuick.changed(() => sendCmd(BYTEFASTMODE, cbQuick.checked() ? BYTEON : BYTEOFF));
+}
+
+function onModeChange() {
+  const newMode = selMode.value();
+  const pwd = prompt("Enter Password to switch mode:");
+  if (pwd) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(`setMode:${newMode}:${pwd}`);
+    } else {
+      alert("Not connected!");
+    }
+  }
+  // Note: If cancelled or failed, the UI might stay on the new selection 
+  // until the next state update from server resets it.
 }
 
 // Füll-Funktionen
@@ -158,6 +181,17 @@ function handleWSMessage(evt) {
       cb.elt.disabled = false;
       cb.checked(s[key] === 1);
     });
+
+    if (s.mode !== undefined) {
+      selMode.selected(s.mode);
+      const isWS = (s.mode == 0);
+      const sendBtn = select('.send-button');
+      if (sendBtn) {
+        if (!isWS) sendBtn.attribute('disabled', '');
+        else sendBtn.removeAttribute('disabled');
+      }
+    }
+
     drawGrid();
   } else {
     const data = new Uint8Array(evt.data);
@@ -194,6 +228,9 @@ function updateGridFromBytes(bytes) {
 let paintValue = 1;    // wird beim Press festgelegt
 
 function handlePixelPaint() {
+  // Disable painting if not in Individual Image mode
+  if (selMode && selMode.value() != 0) return;
+
   const x = floor(mouseX / 10);
   const y = floor(mouseY / 10);
   if (x >= 0 && x < colsX && y >= 0 && y < rowsY) {
