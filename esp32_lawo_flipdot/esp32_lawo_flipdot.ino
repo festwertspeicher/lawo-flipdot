@@ -135,21 +135,20 @@ void loadPatterns() {
   while(file){
     String name = String(file.name());
     if(name.endsWith(".json")) {
-      // Open file again to verify size reliably
-      if (!name.startsWith("/")) name = "/" + name;
-      
-      File checkFile = SPIFFS.open(name, "r");
-      if (checkFile) {
-        size_t s = checkFile.size();
-        if (s > 0) {
-          patterns.push_back(name);
-          Serial.print("Found pattern: "); Serial.print(name); Serial.print(" ("); Serial.print(s); Serial.println(" bytes)");
-        } else {
-          Serial.print("Skipping empty pattern: "); Serial.println(name);
+      size_t fSize = file.size();
+      if (!fullPath.startsWith("/")) {
+        if (!fullPath.startsWith("/patterns/") && !fullPath.startsWith("patterns/")) {
+             fullPath = "/patterns/" + fullPath; 
+        } else if (!fullPath.startsWith("/")) {
+             fullPath = "/" + fullPath;
         }
-        checkFile.close();
+      }
+
+      if (fSize > 0) {
+        patterns.push_back(fullPath);
+        Serial.printf("Found pattern: %s (Size: %u)\n", fullPath.c_str(), fSize);
       } else {
-         Serial.print("Could not open file to check size: "); Serial.println(name);
+        Serial.printf("Skipping empty pattern: %s (Size: 0)\n", fullPath.c_str());
       }
     }
     file = root.openNextFile();
@@ -366,6 +365,45 @@ void setup(){
     Serial.println("Server Route not found");
     r->send(404, "text/plain", "Not found");
   });
+
+  // API to save pattern directly from editor
+  server.on("/api/save", HTTP_POST, 
+    [](AsyncWebServerRequest *request){ 
+      request->send(200, "text/plain", "Pattern Saved"); 
+    }, 
+    NULL,
+    [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total){
+      static File f;
+      if(index == 0){
+        String filename = "pattern.json";
+        if(request->hasParam("filename")) {
+           filename = request->getParam("filename")->value();
+        }
+        if(!filename.endsWith(".json")) filename += ".json";
+        
+        // Ensure it goes to /patterns/
+        // If filename contains slashes, strip them or handle? 
+        // Simple approach: just prepend /patterns/ and assume filename is basename
+        int lastSlash = filename.lastIndexOf('/');
+        if (lastSlash >= 0) filename = filename.substring(lastSlash + 1);
+        
+        String path = "/patterns/" + filename;
+        Serial.printf("Saving pattern to: %s\n", path.c_str());
+        
+        SPIFFS.remove(path); // Overwrite
+        f = SPIFFS.open(path, "w");
+      }
+      if(f){
+        f.write(data, len);
+      }
+      if(index + len == total){
+        if(f) f.close();
+        Serial.println("Pattern save complete");
+        // Reload patterns list to include new file
+        loadPatterns();
+      }
+    }
+  );
 
   // Upload-Handler …
   server.on("/upload", HTTP_POST,
