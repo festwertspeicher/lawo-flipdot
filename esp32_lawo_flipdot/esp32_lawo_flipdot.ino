@@ -212,7 +212,7 @@ void updateChaos() {
     }
     
     // Randomly toggle backlight sometimes
-    if (random(0, 100) < 5) { // 5% chance
+    if (random(0, 100) < 25) { // 25% chance
        bool newBl = !stateBacklight;
        stateBacklight = newBl;
        uint8_t cmd[] = { BYTESTART, BYTEBACKL, newBl ? BYTEON : BYTEOFF };
