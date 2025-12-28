@@ -103,6 +103,10 @@ function createUI() {
     selMode.option('Individual Image', 0);
     selMode.option('Pattern Cycle', 1);
     selMode.option('Chaos Mode', 2);
+
+    // Set default selection to Pattern Cycle
+    selMode.selected(1);
+
     selMode.changed(onModeChange);
   }
 
@@ -147,7 +151,7 @@ function createUI() {
     // Text Rendering Tools
     const textTools = createDiv().parent(mode1Container).style('display', 'flex').style('gap', '10px').style('align-items', 'center').style('margin-top', '10px');
 
-    const inpText = createInput('HELLO').parent(textTools).style('width', '100px');
+    const inpText = createInput('HELLO').parent(textTools).style('width', '100px').attribute('maxlength', '10');
 
     const selFont = createSelect().parent(textTools);
     selFont.option('Sans-Serif', 'sans-serif');
@@ -158,7 +162,7 @@ function createUI() {
 
     createButton('Render Text')
       .parent(textTools)
-      .mousePressed(() => renderTextToGrid(inpText.value(), selFont.value(), 12));
+      .mousePressed(() => renderTextToGrid(inpText.value(), selFont.value(), 15));
 
     // Pattern Settings
     const editorSettings = createDiv().parent(mode1Container).style('display', 'flex').style('gap', '10px').style('align-items', 'center');
@@ -184,7 +188,8 @@ function createUI() {
   cbQuick.changed(() => sendCmd(BYTEFASTMODE, cbQuick.checked() ? BYTEON : BYTEOFF));
 
   // Initialize visibility
-  updateUIForMode(selMode ? selMode.value() : 0);
+  // Default to Mode 1 (Pattern Cycle)
+  updateUIForMode(selMode ? selMode.value() : 1);
 }
 
 function updateUIForMode(mode) {
@@ -227,30 +232,27 @@ function fillGrid(v) {
 }
 
 function renderTextToGrid(textStr, fontName, fontSize) {
-  // 1. Create an offscreen buffer at exact resolution
+  // Create an p5 offscreen buffer at exact resolution
   let pg = createGraphics(colsX, rowsY);
-  pg.background(0); // Black background
-  pg.fill(255);     // White text (to represent dots)
+  pg.pixelDensity(1); // Ensure 1:1 pixel mapping
+  pg.noSmooth();      // Disable anti-aliasing for sharp edges
+  pg.background(0);   // Black background
+  pg.fill(255);       // White text
   pg.noStroke();
 
-  // 2. Configure text settings
   pg.textFont(fontName);
   pg.textSize(fontSize);
   pg.textAlign(CENTER, CENTER);
 
-  // 3. Draw text centered
-  // You might need to adjust y-offset depending on font baseline
-  pg.text(textStr, colsX / 2, rowsY / 2);
+  // Draw text centered
+  pg.text(textStr, colsX / 2, (rowsY / 2));
 
-  // 4. Read pixels and update grid
+  // Read pixels and update grid
   pg.loadPixels();
   for (let x = 0; x < colsX; x++) {
     for (let y = 0; y < rowsY; y++) {
-      // Get pixel index in pg.pixels (which is 1D array of RGBA)
-      // p5 pixel density is usually 1, but let's be safe
-      // 4 channels (R, G, B, A) per pixel
-      // We check Red channel of the pixel (0..255)
-      // Since we drew white on black, > 128 is "ON"
+
+      // Get pixel index in pg.pixels
       let index = 4 * (y * colsX + x);
       let r = pg.pixels[index];
 
@@ -259,8 +261,11 @@ function renderTextToGrid(textStr, fontName, fontSize) {
     }
   }
 
-  drawGrid(); // Update main canvas
-  pg.remove(); // Cleanup
+  // Update main canvas
+  drawGrid();
+
+  // Cleanup
+  pg.remove();
 }
 
 function savePattern(filename, useBacklight) {
