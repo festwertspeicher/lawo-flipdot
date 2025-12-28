@@ -135,8 +135,12 @@ void loadPatterns() {
   while(file){
     String name = String(file.name());
     if(name.endsWith(".json")) {
-      patterns.push_back(name);
-      Serial.print("Found pattern: "); Serial.println(name);
+      if (file.size() > 0) {
+        patterns.push_back(name);
+        Serial.print("Found pattern: "); Serial.print(name); Serial.print(" ("); Serial.print(file.size()); Serial.println(" bytes)");
+      } else {
+        Serial.print("Skipping empty pattern: "); Serial.println(name);
+      }
     }
     file = root.openNextFile();
   }
@@ -157,6 +161,13 @@ void updatePattern() {
 
     File f = SPIFFS.open(path, "r");
     if (f) {
+      Serial.printf("Opening pattern: %s, Size: %d\n", path.c_str(), f.size());
+      if (f.size() == 0) {
+        Serial.println("Error: Pattern file is empty!");
+        f.close();
+        return;
+      }
+
       JsonDocument doc; // Dynamic size? 168 bytes is small.
       DeserializationError error = deserializeJson(doc, f);
       if (!error) {
@@ -238,14 +249,14 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
         doc["invert"]    = stateInvert    ? 1 : 0;
         doc["active"]    = stateActive    ? 1 : 0;
         doc["quick"]     = stateQuick     ? 1 : 0;
-        doc["mode"]      = (int)currentMode;
+        doc["mode"]      = currentMode;
 
         String js;
         serializeJson(doc, js);
         client->text(js);
         // Serial.printf("WS→Client JSON: %s\n", js.c_str());
 
-        // aktuelles Bild senden
+        // aktuelles Bild senden (matrixBuffer wird oben im RAM gespeichert)
         uint8_t *msgBuf = new uint8_t[3 + MATRIX_BYTES];
         msgBuf[0] = BYTESTART; 
         msgBuf[1] = BYTEPICTURE; 
@@ -295,7 +306,9 @@ void checkSPIFFSFiles() {
   int fileCount = 0;
   while(file){
     Serial.print("  FILE: ");
-    Serial.println(file.name());
+    Serial.print(file.name());
+    Serial.print(" \tSIZE: ");
+    Serial.println(file.size());
     fileCount++;
     file = root.openNextFile();
   }
