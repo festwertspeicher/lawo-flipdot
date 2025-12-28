@@ -2,6 +2,7 @@
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <SPIFFS.h>
+#include <ArduinoJson.h>
 #include "secrets.h"
 
 #define RX_PIN 16
@@ -99,11 +100,14 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
       String msg = String((char*)data).substring(0, len);
       if(msg == "getState"){
         // JSON zusammenbauen
-        String js = "{\"backlight\":" + String(stateBacklight?1:0)
-                  + ",\"invert\":"  + String(stateInvert   ?1:0)
-                  + ",\"active\":"  + String(stateActive   ?1:0)
-                  + ",\"quick\":"   + String(stateQuick    ?1:0)
-                  + "}";
+        JsonDocument doc;
+        doc["backlight"] = stateBacklight ? 1 : 0;
+        doc["invert"]    = stateInvert    ? 1 : 0;
+        doc["active"]    = stateActive    ? 1 : 0;
+        doc["quick"]     = stateQuick     ? 1 : 0;
+
+        String js;
+        serializeJson(doc, js);
         client->text(js);
         Serial.printf("WS→Client JSON: %s\n", js.c_str());
       }
