@@ -384,15 +384,13 @@ void setup(){
         if(!filename.endsWith(".json")) filename += ".json";
         
         // Ensure it goes to /patterns/
-        // If filename contains slashes, strip them or handle? 
-        // Simple approach: just prepend /patterns/ and assume filename is basename
         int lastSlash = filename.lastIndexOf('/');
         if (lastSlash >= 0) filename = filename.substring(lastSlash + 1);
         
         String path = "/patterns/" + filename;
         Serial.printf("Saving pattern to: %s\n", path.c_str());
         
-        SPIFFS.remove(path); // Overwrite
+        SPIFFS.remove(path);
         f = SPIFFS.open(path, "w");
       }
       if(f){
@@ -401,7 +399,6 @@ void setup(){
       if(index + len == total){
         if(f) f.close();
         Serial.println("Pattern save complete");
-        // Reload patterns list to include new file
         loadPatterns();
       }
     }

@@ -25,6 +25,11 @@ let mode1Container; // Container for Mode 1 (Pattern Editor) tools
 let lastX = -1, lastY = -1;
 
 function connectWebSocket() {
+  if (location.protocol === 'file:') {
+    console.warn("Running from file://. WebSocket disabled. UI will work in offline/demo mode.");
+    return;
+  }
+
   console.log("Connecting WebSocket...");
   ws = new WebSocket(`ws://${location.host}/ws`);
   ws.binaryType = 'arraybuffer';
@@ -160,15 +165,15 @@ function createUI() {
     // Pattern Settings
     const editorSettings = createDiv().parent(mode1Container).style('display', 'flex').style('gap', '10px').style('align-items', 'center');
 
-    createSpan('Filename:').parent(editorSettings);
-    const inpFilename = createInput('pattern.json').parent(editorSettings).style('width', '150px');
-
     const cbPatternBacklight = createCheckbox('Backlight On', false).parent(editorSettings);
 
     createButton('Save to Device')
       .parent(mode1Container)
       .class('send-button')
-      .mousePressed(() => savePattern(inpFilename.value(), cbPatternBacklight.checked()));
+      .mousePressed(() => {
+        const ts = `${year()}${nf(month(), 2)}${nf(day(), 2)}_${nf(hour(), 2)}${nf(minute(), 2)}${nf(second(), 2)}`;
+        savePattern(`pattern_${ts}.json`, cbPatternBacklight.checked());
+      });
   }
 
   // Checkbox Event Listeners
@@ -204,13 +209,17 @@ function updateUIForMode(mode) {
 
 function onModeChange() {
   const newMode = selMode.value();
-  const pwd = prompt("Enter Password to switch mode:");
-  if (pwd) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
+
+  // Update UI immediately for offline/demo capability
+  updateUIForMode(newMode);
+
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    const pwd = prompt("Enter Password to switch mode:");
+    if (pwd) {
       ws.send(`setMode:${newMode}:${pwd}`);
     }
   } else {
-    // wait for server update to correct us if needed.
+    console.log("Offline/Demo: Switched UI to mode " + newMode);
   }
 }
 
@@ -280,6 +289,12 @@ function savePattern(filename, useBacklight) {
   }
 
   // Send to server
+  if (location.protocol === 'file:') {
+    saveJSON(json, filename);
+    alert('Offline Mode: JSON file downloaded locally.');
+    return;
+  }
+
   fetch(`/api/save?filename=${encodeURIComponent(filename)}`, {
     method: 'POST',
     body: JSON.stringify(json),
@@ -291,11 +306,14 @@ function savePattern(filename, useBacklight) {
       if (response.ok) {
         alert(`Pattern '${filename}' saved successfully to device!`);
       } else {
-        alert('Error saving pattern: ' + response.statusText);
+        throw new Error(response.statusText);
       }
     })
     .catch(error => {
-      alert('Network error saving pattern: ' + error);
+      console.warn("Save failed:", error);
+      if (confirm("Could not save to device (Network Error). Download file locally instead?")) {
+        saveJSON(json, filename);
+      }
     });
 }
 
