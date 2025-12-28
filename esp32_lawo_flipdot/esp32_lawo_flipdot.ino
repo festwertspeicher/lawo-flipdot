@@ -31,6 +31,20 @@ AsyncWebServer server(80);
 AsyncWebSocket  ws("/ws");
 HardwareSerial& matrixSerial = Serial1;
 
+// WiFi Debug Hilfsfunktionen um heruaszufinden falls es Probleme gibt 
+String getWiFiStatusDescription(wl_status_t status) {
+  switch(status) {
+    case WL_IDLE_STATUS: return "WL_IDLE_STATUS (0) - WiFi im Leerlauf";
+    case WL_NO_SSID_AVAIL: return "WL_NO_SSID_AVAIL (1) - SSID nicht verfügbar";
+    case WL_SCAN_COMPLETED: return "WL_SCAN_COMPLETED (2) - Scan abgeschlossen";
+    case WL_CONNECTED: return "WL_CONNECTED (3) - Verbunden";
+    case WL_CONNECT_FAILED: return "WL_CONNECT_FAILED (4) - Verbindung fehlgeschlagen";
+    case WL_CONNECTION_LOST: return "WL_CONNECTION_LOST (5) - Verbindung verloren";
+    case WL_DISCONNECTED: return "WL_DISCONNECTED (6) - Getrennt";
+    default: return String("Unbekannter Status: ") + String(status);
+  }
+}
+
 // Log & Weiterleitung von Binary-Frames an die Matrix
 void handleWebSocketMessage(void*, uint8_t *data, size_t len) {
   // Update state-flags bei Commands
@@ -141,6 +155,7 @@ void setup(){
   // Station-Mode sicherstellen (https://randomnerdtutorials.com/esp32-useful-wi-fi-functions-arduino/#1)
   WiFi.mode(WIFI_STA); 
 
+  Serial.printf("Verbinde mit WLAN: %s\n", ssid);
   WiFi.begin(ssid, password);
   Serial.print("Verbinde WLAN");
   
@@ -150,12 +165,44 @@ void setup(){
     delay(500); 
     Serial.print(".");
     attempts++;
+    Serial.printf(" (Versuch %d, Status: %s)\n", attempts, getWiFiStatusDescription(WiFi.status()).c_str());
   }
 
   if(WiFi.status() == WL_CONNECTED) {
-    Serial.println("\n✓ WLAN: " + WiFi.localIP().toString());
+    Serial.println("\n✓ WLAN verbunden!");
+    Serial.printf("IP-Adresse: %s\n", WiFi.localIP().toString().c_str());
+    Serial.printf("Gateway: %s\n", WiFi.gatewayIP().toString().c_str());
+    Serial.printf("Subnetzmaske: %s\n", WiFi.subnetMask().toString().c_str());
+    Serial.printf("DNS-Server: %s\n", WiFi.dnsIP().toString().c_str());
+    Serial.printf("MAC-Adresse: %s\n", WiFi.macAddress().c_str());
+    Serial.printf("RSSI (Signalstärke): %d dBm\n", WiFi.RSSI());
+    Serial.printf("WiFi-Kanal: %d\n", WiFi.channel());
+    Serial.printf("Hostname: %s\n", WiFi.getHostname());
   } else {
-    Serial.println("\n! WLAN konnte nicht verbunden werden. Bitte für Verbindung sorgen und Device neustarten.");
+    Serial.println("\n✗ WLAN konnte nicht verbunden werden. Sammle zusätzliche Diagnose-Informationen...");
+    wl_status_t finalStatus = WiFi.status();
+    Serial.printf("Letzter Status: %s\n", getWiFiStatusDescription(finalStatus).c_str());
+    
+    // Scanne verfügbare Netzwerke
+    Serial.println("Scanne verfügbare WLAN-Netzwerke...");
+    int n = WiFi.scanNetworks();
+    Serial.printf("Gefundene Netzwerke: %d\n", n);
+    bool ssidFound = false;
+    for (int i = 0; i < n; ++i) {
+      String ssidName = WiFi.SSID(i);
+      int rssi = WiFi.RSSI(i);
+      int channel = WiFi.channel(i);
+      Serial.printf("  %d: %s (RSSI: %d dBm, Channel: %d)\n", i+1, ssidName.c_str(), rssi, channel);
+      if (ssidName == String(ssid)) {
+        ssidFound = true;
+        Serial.printf("Netzwerk '%s' gefunden!\n", ssid);
+      }
+    }
+    if (!ssidFound) {
+      Serial.printf("Gewünschtes Netzwerk '%s' NICHT gefunden\n", ssid);
+    }
+    
+    Serial.println("Bitte für Verbindung sorgen und Device neustarten.");
   }
 
   // initiale Zustände an Matrix senden
@@ -182,9 +229,22 @@ void loop(){
   // WLAN Reconnect (https://randomnerdtutorials.com/esp32-useful-wi-fi-functions-arduino/#9)
   if (millis() - lastWifiCheck >= WIFI_CHECK_INTERVAL) {
     lastWifiCheck = millis();
-    if (WiFi.status() != WL_CONNECTED) {
-      Serial.println("! WLAN verloren. Versuche Reconnect...");
+    wl_status_t status = WiFi.status();
+    if (status != WL_CONNECTED) {
+      Serial.printf("! WLAN verloren. Aktueller Status: %d. Versuche Reconnect...\n", status);
       WiFi.reconnect();
+      delay(5000); // Warte 5 Sekunden auf Reconnect
+      status = WiFi.status();
+      if (status == WL_CONNECTED) {
+        Serial.println("✓ WLAN Reconnect erfolgreich!");
+        Serial.printf("Neue IP-Adresse: %s\n", WiFi.localIP().toString().c_str());
+        Serial.printf("RSSI: %d dBm\n", WiFi.RSSI());
+      } else {
+        Serial.printf("✗ WLAN Reconnect fehlgeschlagen. Status: %d\n", status);
+      }
+    } else {
+      // Info, wenn verbunden
+      Serial.printf("WLAN OK - IP: %s, RSSI: %d dBm\n", WiFi.localIP().toString().c_str(), WiFi.RSSI());
     }
   }
 
