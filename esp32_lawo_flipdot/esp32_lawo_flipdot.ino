@@ -160,6 +160,17 @@ void updatePattern() {
       JsonDocument doc; // Dynamic size? 168 bytes is small.
       DeserializationError error = deserializeJson(doc, f);
       if (!error) {
+        
+        // Handle Backlight if present in JSON
+        if (doc.containsKey("backlight")) {
+            bool bl = doc["backlight"];
+            if (bl != stateBacklight) {
+                stateBacklight = bl;
+                uint8_t cmd[] = { BYTESTART, BYTEBACKL, bl ? BYTEON : BYTEOFF };
+                matrixSerial.write(cmd, 3);
+            }
+        }
+        
         JsonArray data = doc["data"];
         if (data.size() == MATRIX_BYTES) {
           for (int i = 0; i < MATRIX_BYTES; i++) {
