@@ -401,6 +401,7 @@ void setup(){
       }
       if(f){
         f.write(data, len);
+        Serial.println("Write pattern");
       }
       if(index + len == total){
         if(f) f.close();
