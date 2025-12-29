@@ -1,7 +1,7 @@
 #include <WiFi.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
-#include <SPIFFS.h>
+#include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <vector>
 #include "secrets.h"
@@ -124,12 +124,16 @@ void sendBufferToMatrix() {
 
 void loadPatterns() {
   patterns.clear();
-  File root = SPIFFS.open("/patterns");
+  File root = LittleFS.open("/patterns");
   if(!root || !root.isDirectory()){
-    Serial.println("Patterns directory not found!");
-    // Create it if missing?
-    // SPIFFS doesn't really have directories, just filenames with slashes.
-    return;
+    Serial.println("Patterns directory not found! Creating...");
+    if(LittleFS.mkdir("/patterns")){
+       Serial.println("Patterns directory created");
+       root = LittleFS.open("/patterns");
+    } else {
+       Serial.println("Error creating patterns directory");
+       return;
+    }
   }
   File file = root.openNextFile();
   while(file){
@@ -171,7 +175,7 @@ void updatePattern() {
         
         if (!path.startsWith("/")) path = "/" + path; // Safety
     
-        File f = SPIFFS.open(path, "r");
+        File f = LittleFS.open(path, "r");
         if (f) {
           size_t fSize = f.size();
           if (fSize == 0) {
@@ -322,13 +326,13 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
   }
 }
 
-// SPIFFS Inhalt listen
-void checkSPIFFSFiles() {
-  Serial.println("Checking SPIFFS files:");
+// LittleFS Inhalt listen
+void checkLittleFSFiles() {
+  Serial.println("Checking LittleFS files:");
   
-  Serial.printf("SPIFFS Total: %u, Used: %u\n", SPIFFS.totalBytes(), SPIFFS.usedBytes());
+  Serial.printf("LittleFS Total: %u, Used: %u\n", LittleFS.totalBytes(), LittleFS.usedBytes());
 
-  File root = SPIFFS.open("/");
+  File root = LittleFS.open("/");
   File file = root.openNextFile();
   int fileCount = 0;
   while(file){
@@ -340,7 +344,7 @@ void checkSPIFFSFiles() {
     file = root.openNextFile();
   }
   if(fileCount == 0) {
-    Serial.println("ALERT: SPIFFS is empty! data folder is not filled with any files");
+    Serial.println("ALERT: LittleFS is empty! data folder is not filled with any files");
   }
 }
 
@@ -348,14 +352,14 @@ void setup(){
   Serial.begin(115200);
   matrixSerial.begin(57600, SERIAL_8N1, RX_PIN, TX_PIN);
 
-  // SPIFFS
-  if(!SPIFFS.begin(true)){
-    Serial.println("✗ SPIFFS mount failed");
+  // LittleFS
+  if(!LittleFS.begin(true)){
+    Serial.println("✗ LittleFS mount failed");
     return;
   }
   
-  // SPIFFS files überprüfen
-  checkSPIFFSFiles();
+  // LittleFS files überprüfen
+  checkLittleFSFiles();
 
   // If all files are empty, maybe format?
   // Use caution with format. For now, just logging.
@@ -367,7 +371,7 @@ void setup(){
   server.addHandler(&ws);
   
   // Static Files
-  server.serveStatic("/", SPIFFS, "/").setDefaultFile("index.html");
+  server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
   
   server.onNotFound([](AsyncWebServerRequest *r){
     Serial.println("Server Route not found");
@@ -399,12 +403,12 @@ void setup(){
         Serial.printf("Saving pattern to: %s\n", path.c_str());
         
         if (path.length() > 31) {
-          Serial.printf("ERROR: Filename too long (%d > 31 chars)! SPIFFS limit exceeded.\n", path.length());
+          Serial.printf("ERROR: Filename too long (%d > 31 chars)! LittleFS limit exceeded.\n", path.length());
         }
 
-        SPIFFS.remove(path);
-        f = SPIFFS.open(path, "w");
-        if(!f) Serial.println("ERROR: SPIFFS.open failed!");
+        LittleFS.remove(path);
+        f = LittleFS.open(path, "w");
+        if(!f) Serial.println("ERROR: LittleFS.open failed!");
       }
       if(f){
         f.write(data, len);
@@ -424,8 +428,8 @@ void setup(){
     [](AsyncWebServerRequest *req, String fn, size_t idx, uint8_t *data, size_t len, bool fin){
       static File f;
       if(idx==0){
-        SPIFFS.remove("/"+fn);
-        f = SPIFFS.open("/"+fn, "w");
+        LittleFS.remove("/"+fn);
+        f = LittleFS.open("/"+fn, "w");
       }
       if(f) f.write(data, len);
       if(fin){ f.close(); Serial.printf("Upload fertig: %s (%u bytes)\n", fn.c_str(), idx+len); }
