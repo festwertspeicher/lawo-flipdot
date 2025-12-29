@@ -29,10 +29,29 @@
                 position: sticky;
                 top: 0;
                 z-index: 100;
+                flex-wrap: wrap;
+                /* Allow wrapping on small screens */
+            }
+
+            h1#app-title {
+                margin: 0;
+                font-size: 1.2rem;
+                cursor: pointer;
+                user-select: none;
             }
 
             #sketch {
                 margin-top: 20px;
+                display: flex;
+                justify-content: center;
+                width: 100%;
+            }
+
+            canvas {
+                max-width: 100%;
+                height: auto !important;
+                /* Maintain aspect ratio */
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
             }
 
             #controls {
@@ -41,6 +60,8 @@
                 gap: 15px;
                 margin: 20px;
                 align-items: center;
+                width: 90%;
+                max-width: 600px;
             }
 
             .control-group {
@@ -52,16 +73,53 @@
 
             #controls button,
             #controls input[type=checkbox]+label,
-            #ui-header select {
-                padding: 8px 12px;
-                font-size: 14px;
+            #ui-header select,
+            #ui-header input {
+                padding: 10px 15px;
+                /* Larger touch targets */
+                font-size: 16px;
+                /* Readable on mobile */
                 cursor: pointer;
+            }
+
+            /* Admin Only Class - Hidden by default */
+            .admin-only {
+                display: none !important;
+            }
+
+            /* Larger Primary Button */
+            button.primary-action {
+                background-color: #007bff;
+                color: white;
+                border: none;
+                padding: 15px 30px !important;
+                font-size: 1.2rem !important;
+                font-weight: bold;
+                border-radius: 8px;
+                margin-top: 10px;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                transition: background-color 0.2s;
+            }
+
+            button.primary-action:active {
+                background-color: #0056b3;
+                transform: translateY(2px);
+            }
+
+            /* Admin Mode Active State */
+            body.admin-mode .admin-only {
+                display: flex !important;
             }
         </style>
     </head>
 
     <body>
-        <div id="ui-header"></div>
+        <div id="ui-header">
+            <h1 id="app-title" title="Tap 5 times for Admin Mode">LED Matrix Control</h1>
+            <div id="admin-controls" class="admin-only">
+                <!-- Mode Selector will go here -->
+            </div>
+        </div>
         <div id="sketch"></div>
         <div id="controls"></div>
     </body>
