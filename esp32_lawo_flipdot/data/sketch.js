@@ -24,6 +24,10 @@ let mode1Container; // Container for Mode 1 (Pattern Editor) tools
 // zuletzt bearbeiteter Pixel
 let lastX = -1, lastY = -1;
 
+let titleClickCount = 0;
+let titleClickTimer = null;
+let isAdmin = false;
+
 function connectWebSocket() {
   if (location.protocol === 'file:') {
     console.warn("Running from file://. WebSocket disabled. UI will work in offline/demo mode.");
@@ -36,7 +40,18 @@ function connectWebSocket() {
 
   ws.onopen = () => {
     console.log("WebSocket connected");
+    // Only request state if we are NOT in Mode 1 (Pattern Cycle) by default logic
+    // Actually, we need state for admin checkboxes, but we can suppress the grid update.
+    // For simplicity, let's just ask for state but filter the response in handleWSMessage.
     ws.send('getState');
+
+    // Enforce public defaults if not admin: Backlight ON, Quick ON
+    if (!isAdmin) {
+      setTimeout(() => {
+        ws.send(Uint8Array.from([BYTESTART, BYTEBACKL, BYTEON]));
+        ws.send(Uint8Array.from([BYTESTART, BYTEFASTMODE, BYTEON]));
+      }, 500);
+    }
   };
 
   ws.onmessage = handleWSMessage;
@@ -54,6 +69,29 @@ function connectWebSocket() {
 
 function setup() {
   console.log("+++ setup() gestartet");
+
+  // Check URL param for admin
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('admin') === 'true') {
+    enableAdminMode();
+  }
+
+  // Setup Title Click Handler
+  const title = select('#app-title');
+  if (title) {
+    title.mousePressed(() => {
+      titleClickCount++;
+      if (titleClickTimer) clearTimeout(titleClickTimer);
+      titleClickTimer = setTimeout(() => {
+        titleClickCount = 0;
+      }, 2000);
+
+      if (titleClickCount >= 5) {
+        enableAdminMode();
+        titleClickCount = 0;
+      }
+    });
+  }
 
   // Canvas
   const sw = colsX * 10, sh = rowsY * 10;
@@ -73,6 +111,12 @@ function setup() {
   drawGrid();
 }
 
+function enableAdminMode() {
+  isAdmin = true;
+  document.body.classList.add('admin-mode');
+  alert("Admin Mode Enabled");
+}
+
 function drawGrid() {
   background(100);
   noStroke();
@@ -88,18 +132,19 @@ function drawGrid() {
 }
 
 function createUI() {
-  const header = select('#ui-header');
+  // Use the admin-controls container for admin stuff
+  const adminContainer = select('#admin-controls');
   const controls = select('#controls');
 
   // Clear existing content if any (though setup runs once)
-  if (header) header.html('');
+  if (adminContainer) adminContainer.html('');
   if (controls) controls.html('');
 
-  // --- Header: Mode Selector ---
-  if (header) {
-    createSpan('Mode: ').parent(header).style('font-weight', 'bold');
+  // --- Admin Header: Mode Selector ---
+  if (adminContainer) {
+    createSpan('Mode: ').parent(adminContainer).style('font-weight', 'bold').style('margin-right', '5px');
     selMode = createSelect();
-    selMode.parent(header);
+    selMode.parent(adminContainer);
     selMode.option('Individual Image', 0);
     selMode.option('Pattern Cycle', 1);
     selMode.option('Chaos Mode', 2);
@@ -111,14 +156,15 @@ function createUI() {
   }
 
   if (controls) {
-    // --- Global Settings ---
-    const settingsDiv = createDiv().parent(controls).class('control-group');
-    cbBacklight = createCheckbox('Backlight', false).parent(settingsDiv).attribute('disabled', '');
+    // --- Global Settings (Admin Only) ---
+    const settingsDiv = createDiv().parent(controls).class('control-group admin-only');
+    cbBacklight = createCheckbox('Backlight', true).parent(settingsDiv).attribute('disabled', '');
     cbInvert = createCheckbox('Invert', false).parent(settingsDiv).attribute('disabled', '');
-    cbQuick = createCheckbox('QuickUpdt', false).parent(settingsDiv).attribute('disabled', '');
+    cbQuick = createCheckbox('QuickUpdt', true).parent(settingsDiv).attribute('disabled', '');
 
-    // --- Mode 0 Tools (Fill, Send) ---
+    // --- Mode 0 Tools (Fill, Send) - Only relevant if Admin switches to Mode 0 ---
     mode0Container = createDiv().parent(controls).class('control-group');
+    mode0Container.style('display', 'none'); // Hidden by default as we start in Mode 1
 
     createButton('Fill Black')
       .parent(mode0Container)
@@ -134,46 +180,47 @@ function createUI() {
       .mousePressed(sendMatrix);
   }
 
-  // --- Mode 1 Tools (Pattern Editor) ---
+  // --- Mode 1 Tools (Pattern Editor) - Visible to Public ---
   if (controls) {
-    mode1Container = createDiv().parent(controls).class('control-group').style('display', 'none');
+    // Note: We remove 'display: none' from creation, logic handles visibility
+    mode1Container = createDiv().parent(controls).class('control-group');
 
     // Editor Tools
-    createButton('Fill Black')
-      .parent(mode1Container)
+    const editorTools = createDiv().parent(mode1Container).class('control-group');
+    createButton('Clear')
+      .parent(editorTools)
       .mousePressed(() => { fillGrid(0); drawGrid(); });
 
-    createButton('Fill Yellow')
-      .parent(mode1Container)
+    createButton('Fill')
+      .parent(editorTools)
       .mousePressed(() => { fillGrid(1); drawGrid(); });
 
     // Text Rendering Tools
-    const textTools = createDiv().parent(mode1Container).style('display', 'flex').style('gap', '10px').style('align-items', 'center').style('margin-top', '10px');
+    const textTools = createDiv().parent(mode1Container).class('control-group').style('margin-top', '10px');
 
-    const inpText = createInput('HELLO').parent(textTools).style('width', '100px').attribute('maxlength', '10');
+    const inpText = createInput('HELLO').parent(textTools).style('width', '80px').attribute('maxlength', '10');
 
-    const selFont = createSelect().parent(textTools);
+    const selFont = createSelect().parent(textTools).style('display', 'none');
     selFont.option('Sans-Serif', 'sans-serif');
-    selFont.option('Serif', 'serif');
-    selFont.option('Monospace', 'monospace');
-    selFont.option('Arial', 'Arial');
-    selFont.option('Courier New', 'Courier New');
+    // Default to sans-serif without showing the dropdown
 
-    createButton('Render Text')
+    createButton('Render')
       .parent(textTools)
-      .mousePressed(() => renderTextToGrid(inpText.value(), selFont.value(), 15));
+      .mousePressed(() => renderTextToGrid(inpText.value(), 'sans-serif', 15));
 
     // Pattern Settings
-    const editorSettings = createDiv().parent(mode1Container).style('display', 'flex').style('gap', '10px').style('align-items', 'center');
+    const saveTools = createDiv().parent(mode1Container).class('control-group').style('margin-top', '10px');
 
-    const cbPatternBacklight = createCheckbox('Backlight On', false).parent(editorSettings);
+    // Always enforce backlight in Pattern Cycle mode
+    const cbPatternBacklight = createCheckbox('Backlight', true).parent(saveTools).style('display', 'none');
 
     createButton('Save to Device')
-      .parent(mode1Container)
-      .class('send-button')
+      .parent(saveTools)
+      .class('primary-action')
       .mousePressed(() => {
         const ts = `${year()}${nf(month(), 2)}${nf(day(), 2)}_${nf(hour(), 2)}${nf(minute(), 2)}${nf(second(), 2)}`;
-        savePattern(`${ts}.json`, cbPatternBacklight.checked());
+        // Always pass true for backlight in this simplified mode
+        savePattern(`${ts}.json`, true);
       });
   }
 
@@ -202,6 +249,9 @@ function updateUIForMode(mode) {
   } else if (mode === 1) {
     mode0Container.style('display', 'none');
     mode1Container.style('display', 'flex');
+    // Ensure flex direction for internal containers
+    mode1Container.style('flex-direction', 'column');
+    mode1Container.style('align-items', 'center');
   } else {
     mode0Container.style('display', 'none');
     mode1Container.style('display', 'none');
@@ -380,6 +430,13 @@ function handleWSMessage(evt) {
     const data = new Uint8Array(evt.data);
     // Check auf Picture-Frame (FF A0 LEN ...)
     if (data.length > 3 && data[0] === BYTESTART && data[1] === BYTEPICTURE) {
+      // In Mode 1 (Pattern Cycle), we do NOT want to overwrite the editor grid with the live cycle
+      // unless we are explicitly asking for it (e.g. debugging).
+      // For a better user experience, we ignore incoming frames in Mode 1 so the user can draw without interruption.
+      if (selMode && selMode.value() == 1) {
+        return;
+      }
+
       const len = data[2];
       if (len === bytesToSend && data.length >= 3 + len) {
         console.log('← Received full matrix state');
