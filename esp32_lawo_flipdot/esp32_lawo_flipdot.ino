@@ -339,7 +339,7 @@ void checkLittleFSFiles() {
   File file = root.openNextFile();
   int fileCount = 0;
   while(file){
-    debugMessage("  FILE: " + file.name() + " (Size: " + String(file.size()) + ")");
+    debugMessage(String("  FILE: ") + file.name() + " (Size: " + String(file.size()) + ")");
     fileCount++;
     file = root.openNextFile();
   }
@@ -459,7 +459,7 @@ void setup(){
     debugMessage("MAC-Adresse: " + WiFi.macAddress());
     debugMessage("RSSI (Signalstärke): " + String(WiFi.RSSI()) + " dBm");
     debugMessage("WiFi-Kanal: " + String(WiFi.channel()));
-    debugMessage("Hostname: " + WiFi.getHostname());
+    debugMessage(String("Hostname: ") + WiFi.getHostname());
   } else {
     debugMessage("\n✗ WLAN konnte nicht verbunden werden. Sammle zusätzliche Diagnose-Informationen...");
     wl_status_t finalStatus = WiFi.status();
