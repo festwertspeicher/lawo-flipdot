@@ -33,7 +33,7 @@ OperationMode currentMode = MODE_PATTERN;
 long lastModeUpdate = 0;
 std::vector<String> patterns;
 int currentPatternIndex = 0;
-const long PATTERN_INTERVAL = 10 * 1000;
+const long PATTERN_INTERVAL = 6 * 1000;
 const long CHAOS_INTERVAL = 1 * 1000;
 
 bool stateBacklight = false;
