@@ -36,7 +36,7 @@ int currentPatternIndex = 0;
 const long PATTERN_INTERVAL = 6 * 1000;
 const long CHAOS_INTERVAL = 1 * 1000;
 
-bool stateBacklight = false;
+bool stateBacklight = true;
 bool stateInvert    = false;
 bool stateActive    = true;
 bool stateQuick     = true;
