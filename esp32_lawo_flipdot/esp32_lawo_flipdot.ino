@@ -73,7 +73,6 @@ void handleWebSocketMessage(void*, uint8_t *data, size_t len) {
     
     // Block Picture updates if not in WS mode
     if (action == BYTEPICTURE && currentMode != MODE_INDIVIDUALIMAGE) {
-      Serial.println("Ignored Picture update (Not in INDIVIDUALIMAGE Mode)");
       return; 
     }
 
@@ -90,20 +89,19 @@ void handleWebSocketMessage(void*, uint8_t *data, size_t len) {
         break;
     }
   } else {
-    Serial.println("Update is not in valid format.");
+    debugMessage("Update is not in valid format.");
     return;
   }
 
   // 1) in Seriellen Monitor loggen
-  Serial.print("WS→ESP32 (len="); Serial.print(len); Serial.print("): ");
+  debugMessage("WS→ESP32 (len=" + String(len) + "): ");
   for(size_t i=0;i<len;i++){
-    Serial.printf("0x%02X ", data[i]);
+    debugMessage("0x" + String(data[i], HEX) + " ");
   }
-  Serial.println();
 
   // 2) an die Matrix senden
   size_t written = matrixSerial.write(data, len);
-  Serial.printf("ESP32→Matrix (written=%u)\n\n", written);
+  debugMessage("ESP32→Matrix (written=" + String(written) + ")");
 }
 
 // Rückkanal: Serial1 → WebSocket
@@ -111,7 +109,7 @@ void forwardMatrixResponses(){
   while(matrixSerial.available()){
     uint8_t b = matrixSerial.read();
     ws.binaryAll(&b, 1);
-    Serial.printf("Matrix→ESP32→WS: 0x%02X\n", b);
+    debugMessage("Matrix→ESP32→WS: 0x" + String(b, HEX));
   }
 }
 
@@ -126,12 +124,12 @@ void loadPatterns() {
   patterns.clear();
   File root = LittleFS.open("/patterns");
   if(!root || !root.isDirectory()){
-    Serial.println("Patterns directory not found! Creating...");
+    debugMessage("Patterns directory not found! Creating...");
     if(LittleFS.mkdir("/patterns")){
-       Serial.println("Patterns directory created");
+       debugMessage("Patterns directory created");
        root = LittleFS.open("/patterns");
     } else {
-       Serial.println("Error creating patterns directory");
+       debugMessage("Error creating patterns directory");
        return;
     }
   }
@@ -152,14 +150,14 @@ void loadPatterns() {
 
       if (fSize > 0) {
         patterns.push_back(fullPath);
-        Serial.printf("Found pattern: %s (Size: %u)\n", fullPath.c_str(), fSize);
+        debugMessage("Found pattern: " + fullPath + " (Size: " + String(fSize) + ")");
       } else {
-        Serial.printf("Skipping empty pattern: %s (Size: 0)\n", fullPath.c_str());
+        debugMessage("Skipping empty pattern: " + fullPath + " (Size: 0)");
       }
     }
     file = root.openNextFile();
   }
-  Serial.printf("Total patterns found: %d\n", patterns.size());
+  debugMessage("Total patterns found: " + String(patterns.size()));
 }
 
 void updatePattern() {
@@ -179,12 +177,12 @@ void updatePattern() {
         if (f) {
           size_t fSize = f.size();
           if (fSize == 0) {
-            Serial.printf("Error: Pattern file '%s' is empty! Skipping...\n", path.c_str());
+            debugMessage("Error: Pattern file '" + path + "' is empty! Skipping...");
             f.close();
-            continue; // Try next pattern immediately
+            continue; // Try next pattern immediately without waiting
           }
           
-          Serial.printf("Opening pattern: %s, Size: %d\n", path.c_str(), fSize);
+          debugMessage("Opening pattern: " + path + ", Size: " + String(fSize));
     
           JsonDocument doc; 
           DeserializationError error = deserializeJson(doc, f);
@@ -207,18 +205,18 @@ void updatePattern() {
                 matrixBuffer[i] = data[i];
               }
               sendBufferToMatrix();
-              Serial.printf("Displayed Pattern: %s\n", path.c_str());
-              f.close();
+              debugMessage("Displayed Pattern: " + path);
+              f.close();  
               return; // Success!
             } else {
-              Serial.println("Pattern data size mismatch");
+              debugMessage("Pattern data size mismatch");
             }
           } else {
-            Serial.print("JSON Parse Error: "); Serial.println(error.c_str());
+            debugMessage("JSON Parse Error: " + String(error.c_str()));
           }
           f.close();
         } else {
-          Serial.print("Failed to open pattern: "); Serial.println(path);
+          debugMessage("Failed to open pattern: " + path);
         }
     }
   }
@@ -249,10 +247,10 @@ void updateChaos() {
 void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
              AwsEventType type, void *arg, uint8_t *data, size_t len) {
   if(type == WS_EVT_CONNECT){
-    Serial.printf("WS Client #%u connected\n", client->id());
+    debugMessage("WS Client #" + String(client->id()) + " connected");
   }
   else if(type == WS_EVT_DISCONNECT){
-    Serial.printf("WS Client #%u disconnected\n", client->id());
+    debugMessage("WS Client #" + String(client->id()) + " disconnected");
   }
   else if(type == WS_EVT_DATA){
     AwsFrameInfo *info = (AwsFrameInfo*)arg;
@@ -276,7 +274,6 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
         String js;
         serializeJson(doc, js);
         client->text(js);
-        // Serial.printf("WS→Client JSON: %s\n", js.c_str());
 
         // aktuelles Bild senden (matrixBuffer wird oben im RAM gespeichert)
         uint8_t *msgBuf = new uint8_t[3 + MATRIX_BYTES];
@@ -309,10 +306,10 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
                String js;
                serializeJson(doc, js);
                ws.textAll(js);
-               Serial.printf("Mode changed to %d\n", newMode);
+               debugMessage("Mode changed to " + String(newMode));
              }
            } else {
-             Serial.println("Invalid Password for Mode Change");
+             debugMessage("Invalid Password for Mode Change");
              // Send error back to client
              JsonDocument errDoc;
              errDoc["error"] = "Invalid Password";
@@ -326,25 +323,28 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
   }
 }
 
+void debugMessage(String message) {
+  if (debugMode) {
+    Serial.println(message);
+  }
+}
+
 // LittleFS Inhalt listen
 void checkLittleFSFiles() {
-  Serial.println("Checking LittleFS files:");
+  debugMessage("Checking LittleFS files:");
   
-  Serial.printf("LittleFS Total: %u, Used: %u\n", LittleFS.totalBytes(), LittleFS.usedBytes());
+  debugMessage("LittleFS Total: " + String(LittleFS.totalBytes()) + ", Used: " + String(LittleFS.usedBytes()));
 
   File root = LittleFS.open("/");
   File file = root.openNextFile();
   int fileCount = 0;
   while(file){
-    Serial.print("  FILE: ");
-    Serial.print(file.name());
-    Serial.print(" \tSIZE: ");
-    Serial.println(file.size());
+    debugMessage("  FILE: " + file.name() + " (Size: " + String(file.size()) + ")");
     fileCount++;
     file = root.openNextFile();
   }
   if(fileCount == 0) {
-    Serial.println("ALERT: LittleFS is empty! data folder is not filled with any files");
+    debugMessage("ALERT: LittleFS is empty! data folder is not filled with any files");
   }
 }
 
@@ -352,18 +352,13 @@ void setup(){
   Serial.begin(115200);
   matrixSerial.begin(57600, SERIAL_8N1, RX_PIN, TX_PIN);
 
-  // LittleFS
   if(!LittleFS.begin(true)){
-    Serial.println("✗ LittleFS mount failed");
+    debugMessage("✗ LittleFS mount failed");
     return;
   }
   
-  // LittleFS files überprüfen
   checkLittleFSFiles();
 
-  // If all files are empty, maybe format?
-  // Use caution with format. For now, just logging.
-  
   loadPatterns();
   
   // WebSocket
@@ -372,9 +367,9 @@ void setup(){
   
   // Static Files
   server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
-  
+
   server.onNotFound([](AsyncWebServerRequest *r){
-    Serial.println("Server Route not found");
+    debugMessage("Server Route not found");
     r->send(404, "text/plain", "Not found");
   });
 
@@ -400,23 +395,19 @@ void setup(){
         if (lastSlash >= 0) filename = filename.substring(lastSlash + 1);
         
         String path = "/patterns/" + filename;
-        Serial.printf("Saving pattern to: %s\n", path.c_str());
-        
-        if (path.length() > 31) {
-          Serial.printf("ERROR: Filename too long (%d > 31 chars)! LittleFS limit exceeded.\n", path.length());
-        }
+        debugMessage("Saving pattern to: " + path);
 
         LittleFS.remove(path);
         f = LittleFS.open(path, "w");
-        if(!f) Serial.println("ERROR: LittleFS.open failed!");
+        if(!f) debugMessage("ERROR: LittleFS.open failed!");
       }
       if(f){
         f.write(data, len);
-        Serial.println("Write pattern");
+        debugMessage("Write pattern");
       }
       if(index + len == total){
         if(f) f.close();
-        Serial.println("Pattern save complete");
+        debugMessage("Pattern save complete");
         loadPatterns();
       }
     }
@@ -424,7 +415,7 @@ void setup(){
 
   // Upload-Handler …
   server.on("/upload", HTTP_POST,
-    [](AsyncWebServerRequest *req){ req->send(200, "text/plain", "Upload erfolgreich"); },
+    [](AsyncWebServerRequest *req){ req->send(200, "text/plain", "Upload successful"); },
     [](AsyncWebServerRequest *req, String fn, size_t idx, uint8_t *data, size_t len, bool fin){
       static File f;
       if(idx==0){
@@ -432,7 +423,7 @@ void setup(){
         f = LittleFS.open("/"+fn, "w");
       }
       if(f) f.write(data, len);
-      if(fin){ f.close(); Serial.printf("Upload fertig: %s (%u bytes)\n", fn.c_str(), idx+len); }
+      if(fin){ f.close(); debugMessage("Upload erfolgreich: " + fn + " (" + String(idx+len) + " bytes)"); }
     }
   );
 
@@ -442,9 +433,9 @@ void setup(){
   WiFi.mode(WIFI_STA); 
 
   if (ssid != NULL) {
-    Serial.printf("Verbinde mit WLAN: %s\n", ssid);
+    debugMessage("Verbinde mit WLAN: " + String(ssid));
   } else {
-    Serial.println("Fehler: SSID ist NULL!");
+    debugMessage("Fehler: SSID ist NULL! Bitte in secrets.h eintragen.");
     return;
   }
 
@@ -454,46 +445,46 @@ void setup(){
   int attempts = 0;
   while(WiFi.status() != WL_CONNECTED && attempts < 6){
     delay(500); 
-    Serial.print(".");
+    debugMessage("WLAN Verbindung wird hergestellt...");
     attempts++;
-    Serial.printf(" (Versuch %d, Status: %s)\n", attempts, getWiFiStatusDescription(WiFi.status()).c_str());
+    debugMessage(" (Versuch " + String(attempts) + ", Status: " + getWiFiStatusDescription(WiFi.status()) + ")");
   }
 
   if(WiFi.status() == WL_CONNECTED) {
-    Serial.println("\n✓ WLAN verbunden!");
-    Serial.printf("IP-Adresse: %s\n", WiFi.localIP().toString().c_str());
-    Serial.printf("Gateway: %s\n", WiFi.gatewayIP().toString().c_str());
-    Serial.printf("Subnetzmaske: %s\n", WiFi.subnetMask().toString().c_str());
-    Serial.printf("DNS-Server: %s\n", WiFi.dnsIP().toString().c_str());
-    Serial.printf("MAC-Adresse: %s\n", WiFi.macAddress().c_str());
-    Serial.printf("RSSI (Signalstärke): %d dBm\n", WiFi.RSSI());
-    Serial.printf("WiFi-Kanal: %d\n", WiFi.channel());
-    Serial.printf("Hostname: %s\n", WiFi.getHostname());
+    debugMessage("\n✓ WLAN verbunden!");
+    debugMessage("IP-Adresse: " + WiFi.localIP().toString());
+    debugMessage("Gateway: " + WiFi.gatewayIP().toString());
+    debugMessage("Subnetzmaske: " + WiFi.subnetMask().toString());
+    debugMessage("DNS-Server: " + WiFi.dnsIP().toString());
+    debugMessage("MAC-Adresse: " + WiFi.macAddress());
+    debugMessage("RSSI (Signalstärke): " + String(WiFi.RSSI()) + " dBm");
+    debugMessage("WiFi-Kanal: " + String(WiFi.channel()));
+    debugMessage("Hostname: " + WiFi.getHostname());
   } else {
-    Serial.println("\n✗ WLAN konnte nicht verbunden werden. Sammle zusätzliche Diagnose-Informationen...");
+    debugMessage("\n✗ WLAN konnte nicht verbunden werden. Sammle zusätzliche Diagnose-Informationen...");
     wl_status_t finalStatus = WiFi.status();
-    Serial.printf("Letzter Status: %s\n", getWiFiStatusDescription(finalStatus).c_str());
+    debugMessage("Letzter Status: " + getWiFiStatusDescription(finalStatus));
     
     // Scanne verfügbare Netzwerke
-    Serial.println("Scanne verfügbare WLAN-Netzwerke...");
+    debugMessage("Scanne verfügbare WLAN-Netzwerke...");
     int n = WiFi.scanNetworks();
-    Serial.printf("Gefundene Netzwerke: %d\n", n);
+    debugMessage("Gefundene Netzwerke: " + String(n));
     bool ssidFound = false;
     for (int i = 0; i < n; ++i) {
       String ssidName = WiFi.SSID(i);
       int rssi = WiFi.RSSI(i);
       int channel = WiFi.channel(i);
-      Serial.printf("  %d: %s (RSSI: %d dBm, Channel: %d)\n", i+1, ssidName.c_str(), rssi, channel);
+      debugMessage("  " + String(i+1) + ": " + ssidName + " (RSSI: " + String(rssi) + " dBm, Channel: " + String(channel) + ")");
       if (ssidName == String(ssid != NULL ? ssid : "")) {
         ssidFound = true;
-        Serial.printf("Netzwerk '%s' gefunden!\n", (ssid != NULL ? ssid : "NULL"));
+        debugMessage("Netzwerk '" + String(ssid != NULL ? ssid : "NULL") + "' gefunden!");
       }
     }
     if (!ssidFound) {
-      Serial.printf("Gewünschtes Netzwerk '%s' NICHT gefunden\n", (ssid != NULL ? ssid : "NULL"));
+      debugMessage("Gewünschtes Netzwerk '" + String(ssid != NULL ? ssid : "NULL") + "' NICHT gefunden");
     }
     
-    Serial.println("Bitte für Verbindung sorgen und Device neustarten.");
+    debugMessage("Bitte für Verbindung sorgen und Device neustarten.");
   }
 
   // initiale Zustände an Matrix senden
@@ -522,20 +513,20 @@ void loop(){
     lastWifiCheck = millis();
     wl_status_t status = WiFi.status();
     if (status != WL_CONNECTED) {
-      Serial.printf("! WLAN verloren. Aktueller Status: %d. Versuche Reconnect...\n", status);
+      debugMessage("! WLAN verloren. Aktueller Status: " + String(status) + ". Versuche Reconnect...");
       WiFi.reconnect();
       delay(5000); // Warte 5 Sekunden auf Reconnect
       status = WiFi.status();
       if (status == WL_CONNECTED) {
-        Serial.println("✓ WLAN Reconnect erfolgreich!");
-        Serial.printf("Neue IP-Adresse: %s\n", WiFi.localIP().toString().c_str());
-        Serial.printf("RSSI: %d dBm\n", WiFi.RSSI());
+        debugMessage("✓ WLAN Reconnect erfolgreich!");
+        debugMessage("Neue IP-Adresse: " + WiFi.localIP().toString());
+        debugMessage("RSSI: " + String(WiFi.RSSI()) + " dBm");
       } else {
-        Serial.printf("✗ WLAN Reconnect fehlgeschlagen. Status: %d\n", status);
+        debugMessage("✗ WLAN Reconnect fehlgeschlagen. Status: " + String(status));
       }
     } else {
       // Info, wenn verbunden
-      Serial.printf("WLAN OK - IP: %s, RSSI: %d dBm\n", WiFi.localIP().toString().c_str(), WiFi.RSSI());
+      debugMessage("WLAN OK - IP: " + WiFi.localIP().toString() + ", RSSI: " + String(WiFi.RSSI()) + " dBm");
     }
   }
 
