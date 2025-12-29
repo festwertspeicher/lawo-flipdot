@@ -383,6 +383,8 @@ void setup(){
     [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total){
       static File f;
       if(index == 0){
+        if(f) f.close();
+        
         String filename = "pattern.json";
         if(request->hasParam("filename")) {
            filename = request->getParam("filename")->value();
@@ -396,8 +398,13 @@ void setup(){
         String path = "/patterns/" + filename;
         Serial.printf("Saving pattern to: %s\n", path.c_str());
         
+        if (path.length() > 31) {
+          Serial.printf("ERROR: Filename too long (%d > 31 chars)! SPIFFS limit exceeded.\n", path.length());
+        }
+
         SPIFFS.remove(path);
         f = SPIFFS.open(path, "w");
+        if(!f) Serial.println("ERROR: SPIFFS.open failed!");
       }
       if(f){
         f.write(data, len);

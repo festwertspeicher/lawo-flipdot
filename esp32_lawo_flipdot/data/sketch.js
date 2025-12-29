@@ -173,7 +173,7 @@ function createUI() {
       .class('send-button')
       .mousePressed(() => {
         const ts = `${year()}${nf(month(), 2)}${nf(day(), 2)}_${nf(hour(), 2)}${nf(minute(), 2)}${nf(second(), 2)}`;
-        savePattern(`pattern_${ts}.json`, cbPatternBacklight.checked());
+        savePattern(`${ts}.json`, cbPatternBacklight.checked());
       });
   }
 
