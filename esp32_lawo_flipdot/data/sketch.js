@@ -211,16 +211,18 @@ function updateUIForMode(mode) {
 function onModeChange() {
   const newMode = selMode.value();
 
-  // Update UI immediately for offline/demo capability
-  updateUIForMode(newMode);
-
   if (ws && ws.readyState === WebSocket.OPEN) {
     const pwd = prompt("Enter Password to switch mode:");
     if (pwd) {
       ws.send(`setMode:${newMode}:${pwd}`);
+    } else {
+      // Cancelled: revert selector to match current known state (or just don't change anything)
+      ws.send('getState');
     }
   } else {
+    // Offline mode: allow immediate switch
     console.log("Offline/Demo: Switched UI to mode " + newMode);
+    updateUIForMode(newMode);
   }
 }
 
@@ -349,6 +351,14 @@ function sendCmd(actionByte, param) {
 function handleWSMessage(evt) {
   if (typeof evt.data === 'string') {
     const s = JSON.parse(evt.data);
+
+    if (s.error) {
+      alert("Error: " + s.error);
+      // Revert UI to match actual server state (request refresh)
+      ws.send('getState');
+      return;
+    }
+
     [
       { cb: cbBacklight, key: 'backlight' },
       { cb: cbInvert, key: 'invert' },

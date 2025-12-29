@@ -309,6 +309,12 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
              }
            } else {
              Serial.println("Invalid Password for Mode Change");
+             // Send error back to client
+             JsonDocument errDoc;
+             errDoc["error"] = "Invalid Password";
+             String errJs;
+             serializeJson(errDoc, errJs);
+             client->text(errJs);
            }
         }
       }
